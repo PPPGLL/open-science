@@ -711,6 +711,7 @@ const createOrderedSessionPersistence = (
 ): OrderedSessionPersistence => {
   let queue: Promise<unknown> = Promise.resolve()
   let pendingWriteCount = 0
+  let activeFlushes = 0
   const deferredSaves = new Set<Promise<unknown>>()
   const acknowledgedRevisions = new Map<string, number>()
   const acknowledgedSessions = new Map<string, PersistedChatSession>()
@@ -730,7 +731,7 @@ const createOrderedSessionPersistence = (
         ? STREAMING_SESSION_SAVE_INTERVAL_MS
         : LATEST_SESSION_SAVE_INTERVAL_MS
       const waitMs = latestSessionSaveStartedAt + intervalMs - performance.now()
-      if (waitMs <= 0 || entry.bypassCadence) break
+      if (waitMs <= 0 || entry.bypassCadence || activeFlushes > 0) break
       const recheck = await new Promise<boolean>((resolve) => {
         const timeout = setTimeout(() => resolve(false), waitMs)
         entry.releaseCadence = () => {
@@ -939,12 +940,19 @@ const createOrderedSessionPersistence = (
       }),
     saveManifest: (request) => enqueue('manifest', () => api.saveManifest(request)),
     flush: async () => {
-      releasePendingLatestCadence()
-      await queue
-      await Promise.allSettled([...deferredSaves])
-      await queue
-      const failure = failedWritesByTarget.values().next()
-      if (!failure.done) throw failure.value
+      // Runtime/store updates can admit new snapshots while earlier writes are in flight.
+      // Keep cadence disabled until every overlapping flush has finished.
+      activeFlushes += 1
+      try {
+        releasePendingLatestCadence()
+        await queue
+        await Promise.allSettled([...deferredSaves])
+        await queue
+        const failure = failedWritesByTarget.values().next()
+        if (!failure.done) throw failure.value
+      } finally {
+        activeFlushes -= 1
+      }
     }
   }
 }
