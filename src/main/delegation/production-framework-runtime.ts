@@ -112,6 +112,7 @@ const createProductionDelegatedFrameworkRuntime = (
         if (!input.executionModel) {
           throw new Error('Delegated Attempt has no admitted model snapshot.')
         }
+        ownership.assertClear({ ...input.session, frameId: input.frameId })
         const resolveAdmitted = options.runtime.settingsService.resolveAdmittedSubagentBackend
         if (!input.executionBackend && !resolveAdmitted) {
           throw new Error('Admitted delegated backend resolution is unavailable.')
@@ -124,7 +125,6 @@ const createProductionDelegatedFrameworkRuntime = (
           if (releaseResolvedBackend) await releaseResolvedAgentBackendLeases(backend)
           throw new Error('Resolved delegated backend changed framework during admission.')
         }
-        ownership.assertClear({ ...input.session, frameId: input.frameId })
         const runtimeHome = join(
           options.dataRoot,
           'delegation',
