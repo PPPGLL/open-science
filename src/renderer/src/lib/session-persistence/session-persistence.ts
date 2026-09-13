@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { shallow } from 'zustand/vanilla/shallow'
 import {
   packageOperationActive,
   usePackageOperationStore
@@ -945,9 +946,12 @@ const createOrderedSessionPersistence = (
       activeFlushes += 1
       try {
         releasePendingLatestCadence()
-        await queue
-        await Promise.allSettled([...deferredSaves])
-        await queue
+        for (;;) {
+          const draining = queue
+          await draining
+          await Promise.allSettled([...deferredSaves])
+          if (queue === draining && deferredSaves.size === 0) break
+        }
         const failure = failedWritesByTarget.values().next()
         if (!failure.done) throw failure.value
       } finally {
@@ -1501,6 +1505,18 @@ const hasStagedUploads = (session: ChatSession): boolean =>
 
 // Builds an incremental saver: on each store change it persists only sessions whose reference changed
 // and updates the manifest when selection moves. Explicit deletion owns its durable coordinator call.
+// These fields are persisted by Main's dedicated owners. A same-client receipt can update them
+// before the save response arrives; that receipt must not enqueue the same local snapshot again.
+// Keep branchContextResetRequired in the comparison: clearing it is a renderer-persisted change.
+const withoutMainOwnedSessionMetadata = (session: ChatSession): ChatSession => ({
+  ...session,
+  revision: undefined,
+  archivedAt: undefined,
+  enabledComputeHosts: undefined,
+  selectedComputeHosts: undefined,
+  computeConcurrencyLimit: undefined
+})
+
 const createStoreSaver = (
   api: SessionPersistenceApi,
   initial: SessionStoreSnapshot = useSessionStore.getState(),
@@ -1657,6 +1673,20 @@ const createStoreSaver = (
       const hasUnsavedContextReset =
         Boolean(session.branchContextResetRequired) !==
         Boolean(authority?.branchContextResetRequired)
+      if (
+        previousSession &&
+        previousSession !== session &&
+        !isForced &&
+        !hasUnsavedLocalTitle &&
+        !hasUnsavedContextReset &&
+        !streamingDirtySessionIds.has(session.id) &&
+        shallow(
+          withoutMainOwnedSessionMetadata(previousSession),
+          withoutMainOwnedSessionMetadata(session)
+        )
+      ) {
+        continue
+      }
       if (
         (previousById.get(session.id) !== session ||
           isForced ||
