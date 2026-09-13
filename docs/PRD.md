@@ -230,6 +230,9 @@ Key implemented capabilities, mapped to the codebase:
 - **Attachments.** File uploads up to 10 GB are streamed into managed storage and threaded into the agent's prompt context; existing project files can be referenced explicitly with `@`.
 - **Conversation Skill import.** Primary sessions receive an app-owned MCP action that can submit an eligible uploaded package or a validated public GitHub Skill URL to the same preview-and-confirm flow used by Settings. Its local RPC credential is bound to the owning session and restricted to the Skill import method; the server replaces request-body session fields with that authenticated binding before opening approval UI or importing content.
 
+For field ownership, ordinary versus dedicated save paths, and archive/delete behavior, see the
+[Session persistence guide](session-persistence.md).
+
 Session and Project Files use three related identities with separate ownership:
 
 | Identity                                 | Owns                                                                                                                                                  | Does not own                                                               |
