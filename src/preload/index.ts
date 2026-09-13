@@ -6,7 +6,18 @@ import { createElectronRendererApi } from './electron-renderer-api'
 import { createElectronRendererContractAdapter } from './electron-renderer-contract-adapter'
 
 const electronRendererContracts = createElectronRendererContractAdapter({
-  invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
+  invoke: (channel, ...args) => {
+    const pending = ipcRenderer.invoke(channel, ...args)
+    if (/^(acp:|sessions:|preview-state:)/.test(channel)) {
+      const started = Date.now()
+      console.info('[quit-diag] invoke-start', channel, started)
+      void pending.then(
+        () => console.info('[quit-diag] invoke-end', channel, Date.now() - started),
+        () => console.info('[quit-diag] invoke-failed', channel, Date.now() - started)
+      )
+    }
+    return pending
+  },
   send: (channel, ...args) => ipcRenderer.send(channel, ...args),
   on: (channel, listener) => ipcRenderer.on(channel, listener),
   removeListener: (channel, listener) => ipcRenderer.removeListener(channel, listener),

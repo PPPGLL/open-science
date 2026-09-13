@@ -340,6 +340,9 @@ const applyHiddenWindowPresentation = async (
   page: Page,
   windowMode: E2eWindowMode
 ): Promise<void> => {
+  page.on('console', (message) => {
+    if (message.text().includes('[quit-diag]')) console.log(message.text())
+  })
   // Hidden BrowserWindows do not produce animation frames reliably, so make
   // presentation buffers commit immediately without changing normal-window tests.
   if (windowMode === 'hidden') await page.emulateMedia({ reducedMotion: 'reduce' })

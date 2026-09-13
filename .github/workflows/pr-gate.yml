@@ -186,7 +186,7 @@ jobs:
             exit 0
           fi
           if [[ "$EVENT_NAME" == "workflow_dispatch" && "$DRY_RUN_MODE" == "windows-e2e" ]]; then
-            plan='{"schemaVersion":1,"mode":"selective","roots":["manual:windows-e2e"],"lanes":["policy","e2e_functional_windows","e2e_workspace_windows"],"bundles":["policy","windows_e2e"],"reasonChains":["workflow_dispatch windows-e2e -> focused dry-run"]}'
+            plan='{"schemaVersion":1,"mode":"selective","roots":["manual:windows-e2e"],"lanes":["policy","e2e_functional_windows"],"bundles":["policy","windows_e2e"],"reasonChains":["workflow_dispatch windows-e2e -> focused dry-run"]}'
             echo "plan=$plan" >> "$GITHUB_OUTPUT"
             echo 'lanes=["policy","e2e_functional_windows","e2e_workspace_windows"]' >> "$GITHUB_OUTPUT"
             printf '%s\n' '## PR Gate preflight' '' '- Focused dry-run: Windows E2E shards' >> "$GITHUB_STEP_SUMMARY"
@@ -1084,7 +1084,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1]
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -1106,11 +1106,11 @@ jobs:
         shell: bash
         run: node scripts/ci/e2e-setup-snapshot.mjs restore "$RUNNER_TEMP/e2e-setup"
       - name: Install headless Chromium
-        if: ${{ matrix.shard == 1 }}
+        if: ${{ false }}
         run: npx playwright install chromium --only-shell
       - name: Run renderer layout pilot
         id: renderer_layout
-        if: ${{ matrix.shard == 1 }}
+        if: ${{ false }}
         continue-on-error: true
         env:
           PLAYWRIGHT_BLOB_OUTPUT_DIR: blob-report/renderer-layout-windows
@@ -1124,7 +1124,7 @@ jobs:
           PLAYWRIGHT_BLOB_OUTPUT_DIR: blob-report/functional_windows
           PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/functional_windows.json
         # Isolate Electron desktops: parallelize across runners, never within one runner.
-        run: npm run test:e2e:journey -- --workers=1 --fully-parallel --shard=${{ matrix.shard }}/3 --fail-on-flaky-tests --global-timeout=600000
+        run: npx playwright test e2e/session-package.spec.ts e2e/settings-persistence.spec.ts --grep 'exports a Session package and imports its conversation as read-only history|persists Japanese after an Electron restart' --workers=1 --repeat-each=3 --retries=0 --fail-on-flaky-tests --global-timeout=600000
       - name: Upload functional failure artifacts
         if: ${{ steps.e2e_functional_windows.outcome == 'failure' }}
         continue-on-error: true

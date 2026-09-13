@@ -33,19 +33,27 @@ export const completeQuitPersistenceFlush = async (
   request: SessionPersistenceFlushRequest,
   deps: QuitPersistenceFlushDeps
 ): Promise<void> => {
+  const trace = (stage: string): void =>
+    console.info('[quit-diag]', request.requestId, stage, Date.now())
+  trace('received')
   let failure: unknown
   let status: SessionPersistenceFlushResponse['status'] = 'completed'
   try {
     deps.suppressAutoReviews()
+    trace('runtime-start')
     await deps.drainRuntimeEvents()
+    trace('runtime-done')
     await deps.flushPersistence()
+    trace('sessions-done')
     await deps.flushPreviewPersistence()
+    trace('preview-done')
     // Tab persistence does not save edited file content. Reuse Main's existing retry/force-quit gate.
     if (previewLeaveGuards.hasUnsavedChanges()) throw new Error('Preview has unsaved changes.')
   } catch (error) {
     failure = error
     status = isSessionRevisionConflictError(error) ? 'conflict' : 'failed'
   } finally {
+    trace('acknowledge')
     deps.acknowledge({ requestId: request.requestId, status })
   }
   if (failure !== undefined) throw failure
