@@ -50,6 +50,7 @@ type PreparedDelegateExecution = Readonly<{
   permissionProfile?: PermissionProfileId
   capability: DelegateExecutionCapability
   artifactCurrentRunFile?: string
+  confirmProcessCleanup?(): Promise<void>
   disposeResources?(): Promise<void> | void
 }>
 
@@ -245,6 +246,7 @@ const createAcpDelegateExecution = (options: AcpDelegateExecutionOptions): Deleg
   type Slot = { status: 'reserved' | 'running'; attemptId?: string; unreaped?: true }
   const slots = new Map<string, Slot>()
   const activeAttempts = new Set<string>()
+  const quarantined = new Map<string, () => Promise<void>>()
   const activeRuntimeHomes = new Set<string>()
   const activeWorkspaces = new Set<string>()
 
@@ -479,8 +481,29 @@ const createAcpDelegateExecution = (options: AcpDelegateExecutionOptions): Deleg
             firstError ??= error
           }
         }
+        if (scope?.confirmProcessCleanup) {
+          try {
+            await scope.confirmProcessCleanup()
+          } catch (error) {
+            slot.unreaped = true
+            firstError ??= error
+          }
+        }
         listeners.clear()
         if (slot.unreaped) {
+          quarantined.set(input.attemptId, async () => {
+            if (!scope?.confirmProcessCleanup)
+              throw new DelegateExecutionCleanupError(
+                'Process cleanup cannot be retried without ownership evidence.'
+              )
+            await scope.confirmProcessCleanup()
+            await scope.disposeResources?.()
+            activeRuntimeHomes.delete(scope.runtimeHome)
+            activeWorkspaces.delete(scope.workspace.cwd)
+            delete slot.unreaped
+            releaseSlot(slotId)
+            quarantined.delete(input.attemptId)
+          })
           // Keep the exclusion even when the durable caller releases its reservation.
           // A second shutdown of a detached runtime cannot prove the old tree exited.
           throw new DelegateExecutionCleanupError(
@@ -732,7 +755,19 @@ const createAcpDelegateExecution = (options: AcpDelegateExecutionOptions): Deleg
     })
   }
 
-  return Object.freeze({ reserve, run })
+  return Object.freeze({
+    reserve,
+    run,
+    async recoverCleanup() {
+      const results = await Promise.allSettled(
+        [...quarantined.values()].map((recover) => recover())
+      )
+      const failures = results.flatMap((result) =>
+        result.status === 'rejected' ? [result.reason] : []
+      )
+      if (failures.length) throw new AggregateError(failures, 'Delegated resource recovery failed.')
+    }
+  })
 }
 
 export { createAcpDelegateExecution }

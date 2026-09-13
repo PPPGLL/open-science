@@ -145,6 +145,7 @@ type DelegateCapacityReservation = Readonly<{
 }>
 
 type DelegateExecution = Readonly<{
+  recoverCleanup?(): Promise<void>
   reserve(count: number): Promise<DelegateCapacityReservation>
   run(input: DelegateExecutionInput, slotId: string): RunningDelegateExecution
 }>
