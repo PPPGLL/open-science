@@ -54,11 +54,12 @@ it.skipIf(process.platform !== 'win32' || process.env.OPEN_SCIENCE_TEST_PATH_ACL
         stderr += String(chunk)
       })
       const [code] = await once(child, 'close')
-      await wrapped.confirmProcessTreeTermination?.()
+      const terminated = await wrapped.confirmProcessTreeTermination?.()
       expect({ code, stdout, stderr }, stderr).toMatchObject({
         code: 0,
         stdout: expect.stringContaining('OPTIONAL_PATH_OK')
       })
+      expect(terminated).toBe(true)
     } finally {
       await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
     }
