@@ -3765,6 +3765,141 @@ describe('renderer session persistence bridge', () => {
     expect(() => materializeSessionConversationGraph(rebased)).not.toThrow()
   })
 
+  it.each([
+    {
+      name: 'delayed web replica',
+      localChunks: ['B'],
+      remoteContent: 'ABC',
+      remoteEvents: ['event-1', 'event-2', 'event-3'],
+      remoteStatus: 'streaming',
+      expected: 'ABC'
+    },
+    {
+      name: 'local replica ahead of disk',
+      localChunks: ['B', 'C'],
+      remoteContent: 'AB',
+      remoteEvents: ['event-1', 'event-2'],
+      remoteStatus: 'streaming',
+      expected: 'ABC'
+    },
+    {
+      name: 'completed remote stream',
+      localChunks: ['B'],
+      remoteContent: 'ABC',
+      remoteEvents: ['event-1', 'event-2', 'event-3'],
+      remoteStatus: 'complete',
+      expected: 'ABC'
+    },
+    {
+      name: 'different text under the same event history',
+      localChunks: ['B'],
+      remoteContent: 'ABC',
+      remoteEvents: ['event-1', 'event-2'],
+      remoteStatus: 'streaming',
+      expected: null
+    },
+    {
+      name: 'divergent content despite a longer history',
+      localChunks: ['B'],
+      remoteContent: 'AXY',
+      remoteEvents: ['event-1', 'event-2', 'event-3'],
+      remoteStatus: 'streaming',
+      expected: null
+    },
+    {
+      name: 'unrelated event history',
+      localChunks: ['B'],
+      remoteContent: 'ABC',
+      remoteEvents: ['event-1', 'other-event', 'event-3'],
+      remoteStatus: 'streaming',
+      expected: null
+    },
+    {
+      name: 'terminal replica cannot grow again',
+      localChunks: ['B', 'C'],
+      remoteContent: 'AB',
+      remoteEvents: ['event-1', 'event-2'],
+      remoteStatus: 'complete',
+      expected: null
+    }
+  ] as const)(
+    'reconciles stream replicas conservatively: $name',
+    async ({ localChunks, remoteContent, remoteEvents, remoteStatus, expected }) => {
+      const prompt = {
+        id: 'prompt-1',
+        role: 'user' as const,
+        content: 'Explain',
+        status: 'complete' as const,
+        eventIds: [] as string[],
+        createdAt: 1,
+        updatedAt: 1
+      }
+      const partial = {
+        id: 'agent-message-1',
+        role: 'agent' as const,
+        content: 'A',
+        status: 'streaming' as const,
+        streamId: 'run-1',
+        responseToMessageId: prompt.id,
+        eventIds: ['event-1'],
+        createdAt: 2,
+        updatedAt: 2
+      }
+      const base = materializeSessionConversationGraph(
+        createPersistedSession({
+          projectId: 'project-a',
+          revision: 8,
+          messages: [prompt, partial]
+        })
+      )
+      const authoritative = materializeSessionConversationGraph({
+        ...base,
+        revision: 9,
+        updatedAt: base.updatedAt + 1,
+        messages: [
+          prompt,
+          {
+            ...partial,
+            content: remoteContent,
+            status: remoteStatus,
+            eventIds: [...remoteEvents],
+            updatedAt: 4
+          }
+        ]
+      })
+      const conflict = new SessionRevisionConflictError(8, 9)
+      const saveSession = vi
+        .fn<SessionPersistenceApi['saveSession']>()
+        .mockRejectedValueOnce(conflict)
+        .mockImplementationOnce(async (submitted) => ({ ...submitted, revision: 10 }))
+      const api = createApi({ loadOne: vi.fn().mockResolvedValue(authoritative), saveSession })
+      useSessionStore.getState().hydrateSessions([base])
+      const save = createStoreSaver(api, useSessionStore.getState())
+      localChunks.forEach((content, index) => {
+        useSessionStore.getState().appendAgentMessageChunk({
+          sessionId: base.id,
+          streamId: partial.streamId,
+          eventId: `event-${index + 2}`,
+          promptMessageId: prompt.id,
+          content
+        })
+      })
+      if (expected === null) {
+        await expect(save(useSessionStore.getState())).rejects.toBe(conflict)
+        expect(saveSession).toHaveBeenCalledTimes(1)
+        return
+      }
+      await expect(save(useSessionStore.getState())).resolves.toBeUndefined()
+      expect(saveSession).toHaveBeenCalledTimes(2)
+      expect(saveSession.mock.calls[1][0].messages[1]).toMatchObject({
+        content: expected,
+        eventIds: ['event-1', 'event-2', 'event-3'],
+        status: remoteStatus
+      })
+      expect(useSessionStore.getState().sessions[0].messages[1].content).toBe(expected)
+    }
+  )
+
   it('merges disjoint streaming and artifact updates on the same Message identity', async () => {
     const prompt = {
       id: 'prompt-1',

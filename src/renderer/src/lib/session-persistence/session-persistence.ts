@@ -314,6 +314,60 @@ const rebaseConversationGraphCollection = <Item extends { id: string }>(
   return rebased
 }
 
+// Desktop and web renderers can save different prefixes of the same runtime stream. Only
+// reconcile text when both the event history and content prove append-only progress; longer
+// text alone is not evidence that a concurrent edit is safe to discard.
+const moreAdvancedStreamReplica = (
+  base: Record<string, unknown> | undefined,
+  submitted: Record<string, unknown>,
+  latest: Record<string, unknown>
+): Record<string, unknown> | undefined => {
+  if (
+    !base ||
+    base.role !== 'agent' ||
+    base.status !== 'streaming' ||
+    submitted.role !== 'agent' ||
+    latest.role !== 'agent' ||
+    typeof base.streamId !== 'string' ||
+    !base.streamId ||
+    submitted.streamId !== base.streamId ||
+    latest.streamId !== base.streamId ||
+    typeof base.responseToMessageId !== 'string' ||
+    submitted.responseToMessageId !== base.responseToMessageId ||
+    latest.responseToMessageId !== base.responseToMessageId ||
+    typeof base.content !== 'string' ||
+    typeof submitted.content !== 'string' ||
+    typeof latest.content !== 'string'
+  )
+    return undefined
+  const baseEvents = base.eventIds as string[]
+  const submittedEvents = submitted.eventIds as string[]
+  const latestEvents = latest.eventIds as string[]
+  const isPrefix = (prefix: string[], value: string[]): boolean =>
+    prefix.length <= value.length && prefix.every((id, index) => value[index] === id)
+  if (
+    baseEvents.length === 0 ||
+    !isPrefix(baseEvents, submittedEvents) ||
+    !isPrefix(baseEvents, latestEvents) ||
+    !submitted.content.startsWith(base.content) ||
+    !latest.content.startsWith(base.content)
+  )
+    return undefined
+  const [behind, ahead] =
+    submittedEvents.length < latestEvents.length ? [submitted, latest] : [latest, submitted]
+  const behindEvents = behind.eventIds as string[]
+  const aheadEvents = ahead.eventIds as string[]
+  if (
+    behindEvents.length === aheadEvents.length ||
+    !isPrefix(behindEvents, aheadEvents) ||
+    behind.status !== 'streaming' ||
+    !['streaming', 'complete', 'error'].includes(String(ahead.status)) ||
+    !(ahead.content as string).startsWith(behind.content as string)
+  )
+    return undefined
+  return ahead
+}
+
 // Message payloads have more than one legitimate owner: runtime streaming updates content while
 // artifact/upload finalization can update a disjoint field on the same durable identity. Apply a
 // property-level three-way merge, union append-only event evidence, and fail closed whenever both
@@ -333,6 +387,7 @@ const rebaseMessageCollection = <Item extends { id: string; eventIds: string[] }
       const base = baseItem as Record<string, unknown> | undefined
       const submitted = submittedItem as Record<string, unknown>
       const latest = latestItem as Record<string, unknown>
+      const advancedStream = moreAdvancedStreamReplica(base, submitted, latest)
       const keys = new Set([
         ...Object.keys(base ?? {}),
         ...Object.keys(submitted),
@@ -366,6 +421,10 @@ const rebaseMessageCollection = <Item extends { id: string; eventIds: string[] }
         const localChanged = !jsonValuesEqual(submittedValue, baseValue)
         const remoteChanged = !jsonValuesEqual(latestValue, baseValue)
         if (localChanged && remoteChanged && !jsonValuesEqual(submittedValue, latestValue)) {
+          if (key === 'content' && advancedStream) {
+            rebased.content = advancedStream.content
+            continue
+          }
           return undefined
         }
         const selected = localChanged ? submittedValue : latestValue
