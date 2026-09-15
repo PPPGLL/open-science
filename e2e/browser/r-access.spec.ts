@@ -32,3 +32,25 @@ test('Chinese R access guidance fits the runtime panel', async ({ page }, testIn
   await page.setViewportSize({ width: 375, height: 812 })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 })
+
+test('Chinese R library rejection explains the prerequisite without IPC details', async ({
+  page
+}, testInfo) => {
+  await page.setViewportSize({ width: 1060, height: 1050 })
+  await page.goto('/r-access.html?locale=zh-Hans&scenario=install-library')
+  const toggle = page.getByRole('switch', { name: '允许为 R 4.4.1 安装软件包' })
+  await expect(toggle).toBeEnabled()
+  await toggle.click()
+  const error = page.getByTestId('runtimes-error')
+  await expect(error).toContainText('所选文件夹不是此 R 可用的个人包库')
+  await expect(error).toContainText('.libPaths()')
+  await expect(error).not.toContainText('Error invoking remote method')
+  await expect(toggle).not.toBeChecked()
+  await page.getByText('高级选项', { exact: true }).click()
+  await page.screenshot({
+    path: testInfo.outputPath('r-library-rejection-zh-Hans.png'),
+    fullPage: true
+  })
+  await page.setViewportSize({ width: 375, height: 812 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+})

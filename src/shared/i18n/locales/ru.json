@@ -5990,7 +5990,6 @@
     "Select a personal R library": "Выбрать личную библиотеку R",
     "No personal R library detected. Select an existing folder in advanced options.": "Личная библиотека R не обнаружена. Выберите существующую папку в дополнительных параметрах.",
     "Advanced options": "Дополнительные параметры",
-    "Choose an existing personal library visible to this R runtime. No folder will be created.": "Выберите существующую личную библиотеку, доступную этой среде R. Папка не будет создана.",
     "Choose library folder…": "Выбрать папку библиотеки…",
     "Choose another package": "Выбрать другой пакет",
     "Created when you confirm the import.": "Создаётся при подтверждении импорта.",
@@ -6326,6 +6325,8 @@
     "This release would downgrade the Skill or change an existing release. Installation remains blocked.": "Этот выпуск понизит версию навыка или изменит существующий выпуск. Установка остаётся заблокированной.",
     "Update existing Skill": "Обновить существующий навык",
     "Update the existing Skill in place. Its identity and Specialist relationships will be preserved.": "Обновить существующий навык на месте. Его идентичность и связи со специалистами будут сохранены.",
-    "View installed Skill": "Открыть установленный навык"
+    "View installed Skill": "Открыть установленный навык",
+    "This folder is not an available personal package library for the selected R. Recheck the runtimes and select a detected library. A folder must already be included in this R runtime’s .libPaths().": "Эта папка не является доступной личной библиотекой пакетов для выбранного R. Повторите поиск сред выполнения и выберите обнаруженную библиотеку. Папка уже должна быть включена в .libPaths() этой среды R.",
+    "Choose an existing writable personal package library already included in this R runtime’s .libPaths(). Selecting a folder does not add it to R or create a library.": "Выберите существующую личную библиотеку пакетов с правом записи, уже включённую в .libPaths() этой среды R. Выбор папки не добавляет её в R и не создаёт библиотеку."
   }
 }

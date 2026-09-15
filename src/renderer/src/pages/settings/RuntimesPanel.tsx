@@ -431,8 +431,18 @@ const RuntimesPanel = ({
       )
       setEnablement(language, next)
     } catch (e) {
+      const message =
+        e instanceof Error
+          ? e.message
+              .replace(/^Error invoking remote method '[^']*':\s*/, '')
+              .replace(/^Error:\s*/, '')
+          : ''
       setError(
-        e instanceof Error ? e.message : t('Could not change package-install authorization.')
+        message === 'Select an existing personal library visible to this R runtime.'
+          ? t(
+              'This folder is not an available personal package library for the selected R. Recheck the runtimes and select a detected library. A folder must already be included in this R runtime’s .libPaths().'
+            )
+          : message || t('Could not change package-install authorization.')
       )
     } finally {
       setBusy(false)
@@ -807,7 +817,7 @@ const RuntimesPanel = ({
                   <summary className="cursor-pointer">{t('Advanced options')}</summary>
                   <p className="my-2 text-muted-foreground">
                     {t(
-                      'Choose an existing personal library visible to this R runtime. No folder will be created.'
+                      'Choose an existing writable personal package library already included in this R runtime’s .libPaths(). Selecting a folder does not add it to R or create a library.'
                     )}
                   </p>
                   <Button

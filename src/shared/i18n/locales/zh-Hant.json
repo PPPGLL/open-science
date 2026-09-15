@@ -5532,7 +5532,6 @@
     "Select a personal R library": "選擇個人 R 套件庫",
     "No personal R library detected. Select an existing folder in advanced options.": "未偵測到個人 R 套件庫。請在進階選項中選擇現有資料夾。",
     "Advanced options": "進階選項",
-    "Choose an existing personal library visible to this R runtime. No folder will be created.": "選擇此 R 執行階段可見的現有個人套件庫。不會建立資料夾。",
     "Choose library folder…": "選擇套件庫資料夾…",
     "Choose another package": "選擇其他套件",
     "Created when you confirm the import.": "確認匯入時建立。",
@@ -5856,6 +5855,8 @@
     "This release would downgrade the Skill or change an existing release. Installation remains blocked.": "此版本會降級技能或變更已發佈的版本，安裝仍被阻止。",
     "Update existing Skill": "更新現有技能",
     "Update the existing Skill in place. Its identity and Specialist relationships will be preserved.": "原位更新現有技能，保留其識別資訊和專家關聯。",
-    "View installed Skill": "查看已安裝技能"
+    "View installed Skill": "查看已安裝技能",
+    "This folder is not an available personal package library for the selected R. Recheck the runtimes and select a detected library. A folder must already be included in this R runtime’s .libPaths().": "所選資料夾不是此 R 可用的個人套件庫。請重新偵測執行環境並選擇偵測到的套件庫。資料夾必須已包含在此 R 執行環境的 .libPaths() 中。",
+    "Choose an existing writable personal package library already included in this R runtime’s .libPaths(). Selecting a folder does not add it to R or create a library.": "選擇已包含在此 R 執行環境 .libPaths() 中的現有可寫入個人套件庫。選擇資料夾不會將其新增至 R，也不會建立套件庫。"
   }
 }

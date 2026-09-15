@@ -960,6 +960,34 @@ describe('RuntimesPanel', () => {
     }
   )
 
+  it('explains a rejected personal R library without exposing the Electron IPC wrapper', async () => {
+    listEnvironments.mockResolvedValue({
+      python: [],
+      r: [{ ...rEnvs[0], runnable: true, personalRLibraries: ['/personal/R'] }]
+    })
+    getEnablement.mockResolvedValue({
+      enabled: { [rEnvs[0].envId]: true },
+      installAuthorized: {}
+    })
+    // Replay the error shown in the report at the existing renderer IPC boundary.
+    // This tests presentation, not whether the reporter's selected directory was valid.
+    setInstallAuthorized.mockRejectedValueOnce(
+      new Error(
+        "Error invoking remote method 'runtime:set-install-authorized': Error: Select an existing personal library visible to this R runtime."
+      )
+    )
+    await render()
+    const toggle = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Allow package install for R 4.4.1"]'
+    )!
+    await click(toggle)
+    expect(setInstallAuthorized).toHaveBeenCalledWith('r', rEnvs[0].envId, true, '/personal/R')
+    const error = container.querySelector('[data-testid="runtimes-error"]')!
+    expect(error.textContent).toBeTruthy()
+    expect(error.textContent).not.toContain('Error invoking remote method')
+    expect(toggle.getAttribute('aria-checked')).toBe('false')
+  })
+
   it('surfaces the "cannot disable the last enabled runtime" error inline', async () => {
     setEnvironmentEnabled.mockRejectedValueOnce(
       new Error('Cannot disable the last enabled runtime for python.')

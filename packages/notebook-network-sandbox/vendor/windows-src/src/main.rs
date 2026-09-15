@@ -20,6 +20,8 @@ struct LaunchSpec {
     verbatim_arguments: bool,
     cwd: String,
     read_only_roots: Vec<String>,
+    #[serde(default)]
+    optional_read_only_roots: Vec<String>,
     read_write_roots: Vec<String>,
     denied_read_roots: Vec<String>,
     denied_write_roots: Vec<String>,
@@ -193,9 +195,10 @@ mod windows_host {
         UNPROTECTED_DACL_SECURITY_INFORMATION,
     };
     use windows::Win32::Storage::FileSystem::{
-        CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_FLAG_FIRST_PIPE_INSTANCE, FILE_SHARE_MODE,
-        MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW, OPEN_EXISTING,
-        PIPE_ACCESS_DUPLEX,
+        CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_FLAG_BACKUP_SEMANTICS,
+        FILE_FLAG_FIRST_PIPE_INSTANCE, FILE_SHARE_DELETE, FILE_SHARE_MODE, FILE_SHARE_READ,
+        FILE_SHARE_WRITE, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
+        OPEN_EXISTING, PIPE_ACCESS_DUPLEX, WRITE_DAC,
     };
     use windows::Win32::System::Com::{CoCreateGuid, CoTaskMemFree};
     use windows::Win32::System::Diagnostics::ToolHelp::{
@@ -1908,6 +1911,38 @@ mod windows_host {
         .any(|root| path_is_within(path, &root))
     }
 
+    // Check without changing permissions or creating an ACL recovery snapshot. An incidental
+    // PATH entry may be readable/executable by the user but owned by an administrator. Keep
+    // PATH unchanged: existing AppContainer access still works, and tool lookup order is stable.
+    fn can_grant_optional_read_root(path: &str) -> Result<bool> {
+        let name = wide(path);
+        match unsafe {
+            CreateFileW(
+                PCWSTR(name.as_ptr()),
+                WRITE_DAC.0,
+                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                None,
+                OPEN_EXISTING,
+                FILE_FLAG_BACKUP_SEMANTICS,
+                None,
+            )
+        } {
+            Ok(handle) => {
+                drop(Handle(handle));
+                Ok(true)
+            }
+            Err(error)
+                if [2, 3, 5]
+                    .iter()
+                    .any(|code| error.code() == windows::core::HRESULT::from_win32(*code)) =>
+            {
+                Ok(false)
+            }
+            Err(error) => Err(error)
+                .with_context(|| format!("inspect optional PATH directory permissions: {path}")),
+        }
+    }
+
     fn validate_denied_roots(spec: &LaunchSpec) -> Result<()> {
         for denied in &spec.denied_read_roots {
             if appcontainer_reads_without_capability(denied)
@@ -2605,6 +2640,22 @@ mod windows_host {
             let mut grants = BTreeMap::new();
             for path in &spec.read_only_roots {
                 if !appcontainer_reads_without_capability(path) {
+                    grants.insert(path.clone(), AclGrant::ReadOnlyTree);
+                }
+            }
+            for path in &spec.optional_read_only_roots {
+                // Required roots above retain their original failure behavior. Never turn an
+                // optional parent into a grant across an explicitly denied read boundary.
+                if grants.contains_key(path)
+                    || appcontainer_reads_without_capability(path)
+                    || spec.denied_read_roots.iter().any(|denied| {
+                        path_is_within(path, Path::new(denied))
+                            || path_is_within(denied, Path::new(path))
+                    })
+                {
+                    continue;
+                }
+                if can_grant_optional_read_root(path)? {
                     grants.insert(path.clone(), AclGrant::ReadOnlyTree);
                 }
             }
@@ -3589,6 +3640,7 @@ mod windows_host {
                 verbatim_arguments: false,
                 cwd: parent.to_string_lossy().into_owned(),
                 read_only_roots: vec![directory.to_string_lossy().into_owned()],
+                optional_read_only_roots: Vec::new(),
                 read_write_roots: vec![],
                 denied_read_roots: vec![],
                 denied_write_roots: vec![],
@@ -3606,6 +3658,7 @@ mod windows_host {
             assert_eq!(fs::read(acl_state_path(&root)).unwrap(), before);
             let empty = LaunchSpec {
                 read_only_roots: vec![],
+                optional_read_only_roots: Vec::new(),
                 ..spec
             };
             let (id, empty_capability) = make_capability();
@@ -3750,6 +3803,7 @@ mod windows_host {
                     verbatim_arguments: false,
                     cwd: parent.to_string_lossy().into_owned(),
                     read_only_roots: vec![],
+                    optional_read_only_roots: Vec::new(),
                     read_write_roots: vec![],
                     denied_read_roots: vec![],
                     denied_write_roots: vec![],
@@ -3818,6 +3872,7 @@ mod windows_host {
                 verbatim_arguments: false,
                 cwd: parent.to_string_lossy().into_owned(),
                 read_only_roots: vec![],
+                optional_read_only_roots: Vec::new(),
                 read_write_roots: vec![],
                 denied_read_roots: vec![],
                 denied_write_roots: vec![],
@@ -3990,6 +4045,7 @@ mod windows_host {
                     verbatim_arguments: false,
                     cwd: "unused".into(),
                     read_only_roots: vec![],
+                    optional_read_only_roots: Vec::new(),
                     read_write_roots: vec![],
                     denied_read_roots: vec![],
                     denied_write_roots: vec![],
@@ -4013,6 +4069,7 @@ mod windows_host {
                 verbatim_arguments: false,
                 cwd: root.to_string_lossy().into_owned(),
                 read_only_roots: vec![],
+                optional_read_only_roots: Vec::new(),
                 read_write_roots: vec![],
                 denied_read_roots: vec![],
                 denied_write_roots: vec![],
@@ -4583,6 +4640,7 @@ mod tests {
             verbatim_arguments: false,
             cwd: "C:\\workspace".into(),
             read_only_roots: Vec::new(),
+            optional_read_only_roots: Vec::new(),
             read_write_roots: Vec::new(),
             denied_read_roots: Vec::new(),
             denied_write_roots: Vec::new(),
@@ -4608,6 +4666,7 @@ mod tests {
             verbatim_arguments: true,
             cwd: "C:\\workspace".into(),
             read_only_roots: Vec::new(),
+            optional_read_only_roots: Vec::new(),
             read_write_roots: Vec::new(),
             denied_read_roots: Vec::new(),
             denied_write_roots: Vec::new(),
@@ -4673,6 +4732,7 @@ mod tests {
             verbatim_arguments: false,
             cwd: workspace.to_string_lossy().into_owned(),
             read_only_roots: Vec::new(),
+            optional_read_only_roots: Vec::new(),
             read_write_roots: vec![workspace.to_string_lossy().into_owned()],
             denied_read_roots: Vec::new(),
             denied_write_roots: vec![git.to_string_lossy().into_owned()],

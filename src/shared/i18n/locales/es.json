@@ -5854,7 +5854,6 @@
     "Select a personal R library": "Seleccionar una biblioteca personal de R",
     "No personal R library detected. Select an existing folder in advanced options.": "No se ha detectado ninguna biblioteca personal de R. Seleccione una carpeta existente en las opciones avanzadas.",
     "Advanced options": "Opciones avanzadas",
-    "Choose an existing personal library visible to this R runtime. No folder will be created.": "Seleccione una biblioteca personal existente visible para este entorno de R. No se creará ninguna carpeta.",
     "Choose library folder…": "Seleccionar carpeta de biblioteca…",
     "Choose another package": "Seleccionar otro paquete",
     "Created when you confirm the import.": "Se crea al confirmar la importación.",
@@ -6186,6 +6185,8 @@
     "This release would downgrade the Skill or change an existing release. Installation remains blocked.": "Esta versión supondría una reversión de la habilidad o modificaría una versión existente. La instalación sigue bloqueada.",
     "Update existing Skill": "Actualizar la habilidad existente",
     "Update the existing Skill in place. Its identity and Specialist relationships will be preserved.": "Actualizar la habilidad existente en su ubicación actual. Se conservarán su identidad y sus relaciones con los especialistas.",
-    "View installed Skill": "Ver la habilidad instalada"
+    "View installed Skill": "Ver la habilidad instalada",
+    "This folder is not an available personal package library for the selected R. Recheck the runtimes and select a detected library. A folder must already be included in this R runtime’s .libPaths().": "Esta carpeta no es una biblioteca personal de paquetes disponible para el R seleccionado. Vuelva a detectar los entornos de ejecución y seleccione una biblioteca detectada. La carpeta debe estar incluida en .libPaths() de este entorno de R.",
+    "Choose an existing writable personal package library already included in this R runtime’s .libPaths(). Selecting a folder does not add it to R or create a library.": "Seleccione una biblioteca personal de paquetes existente y con permiso de escritura que ya esté incluida en .libPaths() de este entorno de R. Seleccionar una carpeta no la añade a R ni crea una biblioteca."
   }
 }

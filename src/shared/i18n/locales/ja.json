@@ -5532,7 +5532,6 @@
     "Select a personal R library": "個人用 R ライブラリを選択",
     "No personal R library detected. Select an existing folder in advanced options.": "個人用 R ライブラリが検出されませんでした。詳細オプションで既存のフォルダーを選択してください。",
     "Advanced options": "詳細オプション",
-    "Choose an existing personal library visible to this R runtime. No folder will be created.": "この R ランタイムから参照できる既存の個人用ライブラリを選択してください。フォルダーは作成されません。",
     "Choose library folder…": "ライブラリフォルダーを選択…",
     "Choose another package": "別のパッケージを選択",
     "Created when you confirm the import.": "インポートの確定時に作成します。",
@@ -5856,6 +5855,8 @@
     "This release would downgrade the Skill or change an existing release. Installation remains blocked.": "このリリースはスキルをダウングレードするか、既存のリリースを変更します。インストールは引き続きブロックされます。",
     "Update existing Skill": "既存のスキルを更新",
     "Update the existing Skill in place. Its identity and Specialist relationships will be preserved.": "既存のスキルをその場で更新します。識別情報とスペシャリストとの関連は維持されます。",
-    "View installed Skill": "インストール済みスキルを表示"
+    "View installed Skill": "インストール済みスキルを表示",
+    "This folder is not an available personal package library for the selected R. Recheck the runtimes and select a detected library. A folder must already be included in this R runtime’s .libPaths().": "このフォルダーは、選択した R で利用できる個人用パッケージライブラリではありません。ランタイムを再検出し、検出されたライブラリを選択してください。フォルダーは、この R ランタイムの .libPaths() に含まれている必要があります。",
+    "Choose an existing writable personal package library already included in this R runtime’s .libPaths(). Selecting a folder does not add it to R or create a library.": "この R ランタイムの .libPaths() に含まれる、既存の書き込み可能な個人用パッケージライブラリを選択してください。フォルダーを選択しても、R への追加やライブラリの作成は行われません。"
   }
 }

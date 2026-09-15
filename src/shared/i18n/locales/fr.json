@@ -5854,7 +5854,6 @@
     "Select a personal R library": "Sélectionner une bibliothèque R personnelle",
     "No personal R library detected. Select an existing folder in advanced options.": "Aucune bibliothèque R personnelle détectée. Sélectionnez un dossier existant dans les options avancées.",
     "Advanced options": "Options avancées",
-    "Choose an existing personal library visible to this R runtime. No folder will be created.": "Sélectionnez une bibliothèque personnelle existante visible par cet environnement R. Aucun dossier ne sera créé.",
     "Choose library folder…": "Sélectionner le dossier de bibliothèque…",
     "Choose another package": "Choisir un autre paquet",
     "Created when you confirm the import.": "Créé à la confirmation de l’importation.",
@@ -6186,6 +6185,8 @@
     "This release would downgrade the Skill or change an existing release. Installation remains blocked.": "Cette version entraînerait une rétrogradation de la compétence ou modifierait une version existante. L’installation reste bloquée.",
     "Update existing Skill": "Mettre à jour la compétence existante",
     "Update the existing Skill in place. Its identity and Specialist relationships will be preserved.": "Mettre à jour la compétence existante sur place. Son identité et ses relations avec les spécialistes seront préservées.",
-    "View installed Skill": "Voir la compétence installée"
+    "View installed Skill": "Voir la compétence installée",
+    "This folder is not an available personal package library for the selected R. Recheck the runtimes and select a detected library. A folder must already be included in this R runtime’s .libPaths().": "Ce dossier ne correspond pas à une bibliothèque personnelle de paquets disponible pour le R sélectionné. Vérifiez à nouveau les environnements et sélectionnez une bibliothèque détectée. Le dossier doit déjà figurer dans .libPaths() de cet environnement R.",
+    "Choose an existing writable personal package library already included in this R runtime’s .libPaths(). Selecting a folder does not add it to R or create a library.": "Choisissez une bibliothèque personnelle de paquets existante et accessible en écriture, déjà incluse dans .libPaths() de cet environnement R. La sélection d’un dossier ne l’ajoute pas à R et ne crée aucune bibliothèque."
   }
 }
