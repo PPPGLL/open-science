@@ -1,3 +1,9 @@
+import { hydrateSession } from '../../stores/session-store-persistence-owner'
+import {
+  ensureRuntimeWriter,
+  isRuntimeWriter,
+  runtimeWriterSaveOptions
+} from '../acp/runtime-writer-client'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { shallow } from 'zustand/vanilla/shallow'
@@ -650,7 +656,13 @@ const mergeSaveSessionOptions = (
   const conflictRebaseFields = [
     ...new Set([...(previous?.conflictRebaseFields ?? []), ...(next?.conflictRebaseFields ?? [])])
   ]
-  return conflictRebaseFields.length > 0 ? { conflictRebaseFields } : undefined
+  const runtimeWriterToken = next?.runtimeWriterToken ?? previous?.runtimeWriterToken
+  return conflictRebaseFields.length > 0 || runtimeWriterToken
+    ? {
+        ...(runtimeWriterToken ? { runtimeWriterToken } : {}),
+        ...(conflictRebaseFields.length ? { conflictRebaseFields } : {})
+      }
+    : undefined
 }
 
 const LATEST_SESSION_SAVE_INTERVAL_MS = 500
@@ -982,13 +994,14 @@ const resetSessionPersistenceWriteFailuresForTests = (): void => {
 const saveSessionInOrder = async (
   session: PersistedChatSession,
   persistence: OrderedSessionPersistence = liveSessionPersistence,
-  api: SessionReadApi = window.api.sessions
+  api: SessionReadApi = window.api.sessions,
+  options?: SaveSessionOptions
 ): Promise<PersistedChatSession> => {
   const target = `session:${session.id}`
   try {
     const durable = await persistence.saveSessionWithRecovery(
       session,
-      undefined,
+      options,
       async (error, submitted, retry) => {
         if (!isSessionRevisionConflictError(error)) throw error
         const base = persistence.getAcknowledgedSession(submitted.id)
@@ -1209,6 +1222,7 @@ const retryPendingArtifactFinalization = async (
 // are isolated and never block the rest; an empty result leaves references untouched so a file still
 // readable at its pending path is never dropped.
 const reconcilePendingArtifacts = async (api: ArtifactReconcileApi): Promise<void> => {
+  if (!(await ensureRuntimeWriter())) return
   for (const session of useSessionStore.getState().sessions) {
     try {
       await reconcileSessionPendingArtifacts(
@@ -1690,6 +1704,20 @@ const createStoreSaver = (
         if (authorityIsNewer) acknowledgedSessions.set(session.id, authority)
       }
 
+      // A reader flush must not write a received snapshot back to the authority. Real user edits
+      // differ from the acknowledged snapshot and still follow normal conflict checking.
+      if (
+        isForced &&
+        !isRuntimeWriter() &&
+        jsonValuesEqual(
+          toPersistedSession(session, nextStreamingMessages),
+          acknowledgedSessions.has(session.id)
+            ? toPersistedSession(hydrateSession(acknowledgedSessions.get(session.id)!))
+            : undefined
+        )
+      )
+        continue
+
       const hasUnsavedLocalTitle =
         session.unsavedTitle === true && Boolean(authority && session.title !== authority.title)
       const rootBranchId = selectedRootBranchId(session)
@@ -1763,7 +1791,11 @@ const createStoreSaver = (
           ])
         ]
 
-        const saveOptions = conflictRebaseFields.length > 0 ? { conflictRebaseFields } : undefined
+        const writerOptions = runtimeWriterSaveOptions()
+        const saveOptions =
+          conflictRebaseFields.length > 0 || writerOptions.runtimeWriterToken
+            ? { ...writerOptions, ...(conflictRebaseFields.length ? { conflictRebaseFields } : {}) }
+            : undefined
         const sourceAuthority = acknowledgedSessions.get(session.id)
         let submittedAuthority = sourceAuthority
         const serializeSession = (): PersistedChatSession => {
