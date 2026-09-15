@@ -1222,6 +1222,9 @@ export const RENDERER_API_CONTRACT = Object.freeze({
     'handoff-lifecycle:retry',
     ELECTRON
   ]),
+  'lifecycle.claimRuntimeWriter': callable<
+    () => Promise<import('./runtime-writer').RuntimeWriterLease>
+  >()('lifecycle', ['lifecycle:claim-runtime-writer']),
   'lifecycle.getClientId': callable<() => Promise<string>>()('lifecycle', ['lifecycle:client-id']),
   'locale.initialize': callable<
     (request: InitializeLocalePreferenceRequest) => Promise<LocalePreferenceSnapshot>

@@ -1012,6 +1012,7 @@ export type SessionConflictRebaseField =
   | 'pinned'
 
 export type SaveSessionOptions = {
+  runtimeWriterToken?: string
   conflictRebaseFields?: SessionConflictRebaseField[]
 }
 

@@ -1,3 +1,5 @@
+import { RuntimeWriterOwner } from './session-persistence/runtime-writer'
+import type { RuntimeWriterLease } from '../shared/runtime-writer'
 import {
   defineApplicationCommand,
   defineApplicationCommandGroup,
@@ -185,6 +187,7 @@ type UploadApplicationCommandOwner = InvocationOwner<{
 type DataRootWrite = <Result>(operation: () => Promise<Result>) => Promise<Result>
 
 type DataContentApplicationCommandDependencies = Readonly<{
+  isLocalRuntimeWriterAlive?: (clientId: string) => boolean | undefined
   artifacts: ArtifactHandlers
   electron: ElectronDataContentApplicationCommandAdapter
   events: ApplicationEventPublisher
@@ -247,6 +250,11 @@ const dataContentApplicationCommands = Object.freeze({
     'artifacts:resolve-version-descriptors',
     'resolveVersionDescriptors'
   ),
+  runtimeWriterClaim: defineApplicationCommand<
+    'lifecycle:claim-runtime-writer',
+    readonly [],
+    RuntimeWriterLease
+  >('lifecycle:claim-runtime-writer'),
   lifecycleClientId: defineApplicationCommand<'lifecycle:client-id', readonly [], string>(
     'lifecycle:client-id'
   ),
@@ -476,7 +484,8 @@ const dataContentApplicationCommandGroups = Object.freeze([
     dataContentApplicationCommands.artifactResolveVersionDescriptors
   ] as const),
   defineApplicationCommandGroup('lifecycle', [
-    dataContentApplicationCommands.lifecycleClientId
+    dataContentApplicationCommands.lifecycleClientId,
+    dataContentApplicationCommands.runtimeWriterClaim
   ] as const),
   defineApplicationCommandGroup('preview', [
     dataContentApplicationCommands.previewDelete,
@@ -608,6 +617,11 @@ const registerDataContentApplicationCommands = (
   dependencies: DataContentApplicationCommandDependencies
 ): ApplicationCommandInstallation => {
   const scope = registrar.createScope()
+  const runtimeWriter = new RuntimeWriterOwner(
+    undefined,
+    undefined,
+    dependencies.isLocalRuntimeWriterAlive
+  )
 
   try {
     scope.registerGroup(dataContentApplicationCommandGroups[0], {
@@ -660,6 +674,8 @@ const registerDataContentApplicationCommands = (
         dependencies.artifacts.resolveVersionDescriptors(args[0])
     })
     scope.registerGroup(dataContentApplicationCommandGroups[1], {
+      'lifecycle:claim-runtime-writer': ({ callerContext }) =>
+        runtimeWriter.claim(callerContext.lifecycleClientId),
       'lifecycle:client-id': ({ callerContext }) => callerContext.lifecycleClientId
     })
     scope.registerGroup(dataContentApplicationCommandGroups[2], {
@@ -852,38 +868,46 @@ const registerDataContentApplicationCommands = (
         ),
       'sessions:save-session': (invocation) => {
         const originClientId = invocation.callerContext.lifecycleClientId
+        const writerToken = invocation.args[1]?.runtimeWriterToken
+        const commit = <T>(run: () => Promise<T>): Promise<T> =>
+          writerToken === undefined ? run() : runtimeWriter.commit(originClientId, writerToken, run)
         return dependencies.withDataRootWrite(() =>
-          preserveSessionSizeLimitCode(async () => {
-            let result: Awaited<ReturnType<SessionPersistenceHandlers['saveSession']>>
-            try {
-              result =
-                invocation.callerContext.surface === 'task'
-                  ? await dependencies.sessions.saveSession(
-                      invocation.args[0],
-                      invocation.args[1],
-                      {
-                        taskRunCommit: true
-                      }
-                    )
-                  : await dependencies.sessions.saveSession(invocation.args[0], invocation.args[1])
-            } catch (error) {
-              if (SessionPersistence.isSessionRevisionConflictError(error)) {
-                throw new ApplicationCommandError(
-                  SessionPersistence.SESSION_REVISION_CONFLICT_ERROR_CODE,
-                  error instanceof Error ? error.message : 'Session revision conflict.'
-                )
+          commit(() =>
+            preserveSessionSizeLimitCode(async () => {
+              let result: Awaited<ReturnType<SessionPersistenceHandlers['saveSession']>>
+              try {
+                result =
+                  invocation.callerContext.surface === 'task'
+                    ? await dependencies.sessions.saveSession(
+                        invocation.args[0],
+                        invocation.args[1],
+                        {
+                          taskRunCommit: true
+                        }
+                      )
+                    : await dependencies.sessions.saveSession(
+                        invocation.args[0],
+                        invocation.args[1]
+                      )
+              } catch (error) {
+                if (SessionPersistence.isSessionRevisionConflictError(error)) {
+                  throw new ApplicationCommandError(
+                    SessionPersistence.SESSION_REVISION_CONFLICT_ERROR_CODE,
+                    error instanceof Error ? error.message : 'Session revision conflict.'
+                  )
+                }
+                throw error
               }
-              throw error
-            }
-            publishLifecycle(
-              dependencies.events,
-              result.created
-                ? LIFECYCLE_CHANNELS.sessionCreated
-                : LIFECYCLE_CHANNELS.sessionUpdated,
-              { session: result.session, originClientId }
-            )
-            return result.session
-          })
+              publishLifecycle(
+                dependencies.events,
+                result.created
+                  ? LIFECYCLE_CHANNELS.sessionCreated
+                  : LIFECYCLE_CHANNELS.sessionUpdated,
+                { session: result.session, originClientId }
+              )
+              return result.session
+            })
+          )
         )
       },
       'sessions:bind-task-session': (invocation) => {

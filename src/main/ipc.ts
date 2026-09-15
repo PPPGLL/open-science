@@ -4832,6 +4832,11 @@ const createApplicationModules = async (
       clearAll: () => memoryService.clearAll()
     },
     dataContent: {
+      isLocalRuntimeWriterAlive: (clientId) => {
+        if (!clientId.startsWith('electron:')) return undefined
+        const sender = webContents.fromId(Number(clientId.slice('electron:'.length)))
+        return Boolean(sender && !sender.isDestroyed() && !sender.isCrashed())
+      },
       artifacts: artifactHandlers,
       electron: {
         sessionPackageOperation: async (invocation) =>
