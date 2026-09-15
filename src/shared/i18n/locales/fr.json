@@ -5852,7 +5852,6 @@
     "Download the lock bundle to restore packages with a matching interpreter. This does not recreate the full environment.": "Téléchargez les fichiers de verrouillage pour restaurer les paquets avec un interpréteur correspondant. Cela ne recrée pas l’environnement complet.",
     "Could not select a folder.": "Impossible de sélectionner un dossier.",
     "Select a personal R library": "Sélectionner une bibliothèque R personnelle",
-    "No personal R library detected. Select an existing folder in advanced options.": "Aucune bibliothèque R personnelle détectée. Sélectionnez un dossier existant dans les options avancées.",
     "Advanced options": "Options avancées",
     "Choose library folder…": "Sélectionner le dossier de bibliothèque…",
     "Choose another package": "Choisir un autre paquet",
@@ -6186,7 +6185,8 @@
     "Update existing Skill": "Mettre à jour la compétence existante",
     "Update the existing Skill in place. Its identity and Specialist relationships will be preserved.": "Mettre à jour la compétence existante sur place. Son identité et ses relations avec les spécialistes seront préservées.",
     "View installed Skill": "Voir la compétence installée",
-    "This folder is not an available personal package library for the selected R. Recheck the runtimes and select a detected library. A folder must already be included in this R runtime’s .libPaths().": "Ce dossier ne correspond pas à une bibliothèque personnelle de paquets disponible pour le R sélectionné. Vérifiez à nouveau les environnements et sélectionnez une bibliothèque détectée. Le dossier doit déjà figurer dans .libPaths() de cet environnement R.",
-    "Choose an existing writable personal package library already included in this R runtime’s .libPaths(). Selecting a folder does not add it to R or create a library.": "Choisissez une bibliothèque personnelle de paquets existante et accessible en écriture, déjà incluse dans .libPaths() de cet environnement R. La sélection d’un dossier ne l’ajoute pas à R et ne crée aucune bibliothèque."
+    "This folder cannot be used to install packages for this R. Click Recheck and use a detected personal package folder, or use an app-managed R environment.": "Ce dossier ne peut pas recevoir les paquets de cet environnement R. Cliquez sur « Revérifier » et utilisez un dossier personnel de paquets détecté, ou utilisez un environnement R géré par l’application.",
+    "If you have already set up a personal package folder in this R, select that folder here.": "Si vous avez déjà configuré un dossier personnel de paquets dans cet environnement R, sélectionnez-le ici.",
+    "No personal package folder was found for this R. Use an app-managed R environment, or set up a personal package folder in this R and click Recheck.": "Aucun dossier personnel de paquets n’a été trouvé pour cet environnement R. Utilisez un environnement R géré par l’application, ou configurez un dossier personnel de paquets dans cet environnement R, puis cliquez sur « Revérifier »."
   }
 }

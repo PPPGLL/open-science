@@ -5687,7 +5687,6 @@
     "Download the lock bundle to restore packages with a matching interpreter. This does not recreate the full environment.": "Laden Sie das Lock-Bündel herunter, um Pakete mit einem passenden Interpreter wiederherzustellen. Die vollständige Umgebung wird dabei nicht neu erstellt.",
     "Could not select a folder.": "Ordner konnte nicht ausgewählt werden.",
     "Select a personal R library": "Persönliche R-Bibliothek auswählen",
-    "No personal R library detected. Select an existing folder in advanced options.": "Keine persönliche R-Bibliothek erkannt. Wählen Sie in den erweiterten Optionen einen vorhandenen Ordner aus.",
     "Advanced options": "Erweiterte Optionen",
     "Choose library folder…": "Bibliotheksordner auswählen…",
     "Choose another package": "Anderes Paket auswählen",
@@ -6017,7 +6016,8 @@
     "Update existing Skill": "Vorhandene Fähigkeit aktualisieren",
     "Update the existing Skill in place. Its identity and Specialist relationships will be preserved.": "Die vorhandene Fähigkeit wird am selben Ort aktualisiert. Ihre Identität und die Beziehungen zu Spezialisten bleiben erhalten.",
     "View installed Skill": "Installierte Fähigkeit anzeigen",
-    "This folder is not an available personal package library for the selected R. Recheck the runtimes and select a detected library. A folder must already be included in this R runtime’s .libPaths().": "Dieser Ordner ist keine verfügbare persönliche Paketbibliothek für das ausgewählte R. Prüfen Sie die Laufzeitumgebungen erneut und wählen Sie eine erkannte Bibliothek aus. Der Ordner muss bereits in .libPaths() dieser R-Laufzeitumgebung enthalten sein.",
-    "Choose an existing writable personal package library already included in this R runtime’s .libPaths(). Selecting a folder does not add it to R or create a library.": "Wählen Sie eine vorhandene, beschreibbare persönliche Paketbibliothek aus, die bereits in .libPaths() dieser R-Laufzeitumgebung enthalten ist. Die Ordnerauswahl fügt den Ordner weder zu R hinzu noch erstellt sie eine Bibliothek."
+    "This folder cannot be used to install packages for this R. Click Recheck and use a detected personal package folder, or use an app-managed R environment.": "In diesem Ordner können keine Pakete für dieses R installiert werden. Klicken Sie auf „Erneut prüfen“ und verwenden Sie einen erkannten persönlichen Paketordner oder eine von der App verwaltete R-Umgebung.",
+    "If you have already set up a personal package folder in this R, select that folder here.": "Wenn Sie in diesem R bereits einen persönlichen Paketordner eingerichtet haben, wählen Sie diesen Ordner hier aus.",
+    "No personal package folder was found for this R. Use an app-managed R environment, or set up a personal package folder in this R and click Recheck.": "Für dieses R wurde kein persönlicher Paketordner gefunden. Verwenden Sie eine von der App verwaltete R-Umgebung oder richten Sie in diesem R einen persönlichen Paketordner ein und klicken Sie auf „Erneut prüfen“."
   }
 }

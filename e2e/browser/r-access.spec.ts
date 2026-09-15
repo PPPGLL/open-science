@@ -42,11 +42,16 @@ test('Chinese R library rejection explains the prerequisite without IPC details'
   await expect(toggle).toBeEnabled()
   await toggle.click()
   const error = page.getByTestId('runtimes-error')
-  await expect(error).toContainText('所选文件夹不是此 R 可用的个人包库')
-  await expect(error).toContainText('.libPaths()')
+  await expect(error).toContainText('此文件夹无法用于安装这个 R 的软件包')
+  await expect(error).toContainText('重新检测')
+  await expect(error).toContainText('应用托管的 R 环境')
+  await expect(error).not.toContainText('.libPaths()')
   await expect(error).not.toContainText('Error invoking remote method')
   await expect(toggle).not.toBeChecked()
   await page.getByText('高级选项', { exact: true }).click()
+  await expect(
+    page.getByText('如果您已在此 R 中设置了个人软件包文件夹，可在这里选择该文件夹。')
+  ).toBeVisible()
   await page.screenshot({
     path: testInfo.outputPath('r-library-rejection-zh-Hans.png'),
     fullPage: true

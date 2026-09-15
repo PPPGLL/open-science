@@ -440,7 +440,7 @@ const RuntimesPanel = ({
       setError(
         message === 'Select an existing personal library visible to this R runtime.'
           ? t(
-              'This folder is not an available personal package library for the selected R. Recheck the runtimes and select a detected library. A folder must already be included in this R runtime’s .libPaths().'
+              'This folder cannot be used to install packages for this R. Click Recheck and use a detected personal package folder, or use an app-managed R environment.'
             )
           : message || t('Could not change package-install authorization.')
       )
@@ -809,7 +809,7 @@ const RuntimesPanel = ({
                 ) : (
                   <p className="text-muted-foreground">
                     {t(
-                      'No personal R library detected. Select an existing folder in advanced options.'
+                      'No personal package folder was found for this R. Use an app-managed R environment, or set up a personal package folder in this R and click Recheck.'
                     )}
                   </p>
                 )}
@@ -817,7 +817,7 @@ const RuntimesPanel = ({
                   <summary className="cursor-pointer">{t('Advanced options')}</summary>
                   <p className="my-2 text-muted-foreground">
                     {t(
-                      'Choose an existing writable personal package library already included in this R runtime’s .libPaths(). Selecting a folder does not add it to R or create a library.'
+                      'If you have already set up a personal package folder in this R, select that folder here.'
                     )}
                   </p>
                   <Button

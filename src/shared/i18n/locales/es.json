@@ -5852,7 +5852,6 @@
     "Download the lock bundle to restore packages with a matching interpreter. This does not recreate the full environment.": "Descargue el paquete de archivos de bloqueo para restaurar los paquetes con un intérprete compatible con la versión registrada. Esto no recrea el entorno completo.",
     "Could not select a folder.": "No se pudo seleccionar una carpeta.",
     "Select a personal R library": "Seleccionar una biblioteca personal de R",
-    "No personal R library detected. Select an existing folder in advanced options.": "No se ha detectado ninguna biblioteca personal de R. Seleccione una carpeta existente en las opciones avanzadas.",
     "Advanced options": "Opciones avanzadas",
     "Choose library folder…": "Seleccionar carpeta de biblioteca…",
     "Choose another package": "Seleccionar otro paquete",
@@ -6186,7 +6185,8 @@
     "Update existing Skill": "Actualizar la habilidad existente",
     "Update the existing Skill in place. Its identity and Specialist relationships will be preserved.": "Actualizar la habilidad existente en su ubicación actual. Se conservarán su identidad y sus relaciones con los especialistas.",
     "View installed Skill": "Ver la habilidad instalada",
-    "This folder is not an available personal package library for the selected R. Recheck the runtimes and select a detected library. A folder must already be included in this R runtime’s .libPaths().": "Esta carpeta no es una biblioteca personal de paquetes disponible para el R seleccionado. Vuelva a detectar los entornos de ejecución y seleccione una biblioteca detectada. La carpeta debe estar incluida en .libPaths() de este entorno de R.",
-    "Choose an existing writable personal package library already included in this R runtime’s .libPaths(). Selecting a folder does not add it to R or create a library.": "Seleccione una biblioteca personal de paquetes existente y con permiso de escritura que ya esté incluida en .libPaths() de este entorno de R. Seleccionar una carpeta no la añade a R ni crea una biblioteca."
+    "This folder cannot be used to install packages for this R. Click Recheck and use a detected personal package folder, or use an app-managed R environment.": "No se pueden instalar paquetes de este R en esta carpeta. Haga clic en «Volver a comprobar» y utilice una carpeta personal de paquetes detectada, o utilice un entorno de R gestionado por la aplicación.",
+    "If you have already set up a personal package folder in this R, select that folder here.": "Si ya ha configurado una carpeta personal de paquetes en este R, selecciónela aquí.",
+    "No personal package folder was found for this R. Use an app-managed R environment, or set up a personal package folder in this R and click Recheck.": "No se ha encontrado ninguna carpeta personal de paquetes para este R. Utilice un entorno de R gestionado por la aplicación, o configure una carpeta personal de paquetes en este R y haga clic en «Volver a comprobar»."
   }
 }

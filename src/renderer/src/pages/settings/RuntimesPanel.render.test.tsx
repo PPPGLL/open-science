@@ -916,6 +916,8 @@ describe('RuntimesPanel', () => {
     expect(installToggle?.disabled).toBe(true)
     expect(installToggle?.getAttribute('data-state')).toBe('unchecked')
     expect(picker.disabled).toBe(false)
+    expect(container.textContent).toContain('Use an app-managed R environment')
+    expect(container.textContent).not.toContain('Select an existing folder in advanced options.')
     await click(picker)
     expect(installToggle?.disabled).toBe(true)
     vi.mocked(window.api.storage.pickDirectory).mockResolvedValue('/home/user/R/library')
@@ -985,6 +987,8 @@ describe('RuntimesPanel', () => {
     const error = container.querySelector('[data-testid="runtimes-error"]')!
     expect(error.textContent).toBeTruthy()
     expect(error.textContent).not.toContain('Error invoking remote method')
+    expect(error.textContent).not.toContain('.libPaths()')
+    expect(error.textContent).toContain('Click Recheck')
     expect(toggle.getAttribute('aria-checked')).toBe('false')
   })
 
