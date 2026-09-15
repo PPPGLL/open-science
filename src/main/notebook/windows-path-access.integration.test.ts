@@ -18,10 +18,13 @@ it.skipIf(process.platform !== 'win32' || process.env.OPEN_SCIENCE_TEST_PATH_ACL
     const workspace = join(root, 'workspace')
     const runtimeRoot = join(root, 'runtime')
     const pathRoot = join(root, 'Git', 'cmd')
+    const childPathRoot = join(pathRoot, 'bin')
     await mkdir(workspace)
     await mkdir(runtimeRoot)
     await mkdir(pathRoot, { recursive: true })
+    await mkdir(childPathRoot)
     await writeFile(join(pathRoot, '.acl-probe-owned'), 'test-owned')
+    await writeFile(join(childPathRoot, '.acl-probe-owned'), 'CHILD_PATH_OK')
     const windowsRoot = process.env.SystemRoot!
     const fixture = await readFile(
       resolve('src/main/notebook/windows-path-access.fixture.ps1'),
@@ -64,7 +67,7 @@ it.skipIf(process.platform !== 'win32' || process.env.OPEN_SCIENCE_TEST_PATH_ACL
       expect(await readFile(join(pathRoot, '.acl-probe-owned'), 'utf8')).toBe('test-owned')
       const env = {
         ...process.env,
-        PATH: `${pathRoot};${join(windowsRoot, 'System32')}`,
+        PATH: `${pathRoot};${childPathRoot};${join(windowsRoot, 'System32')}`,
         TEMP: workspace
       }
       vi.stubEnv('PATH', env.PATH)
@@ -107,7 +110,7 @@ it.skipIf(process.platform !== 'win32' || process.env.OPEN_SCIENCE_TEST_PATH_ACL
       const adapter = new NotebookShellProcessAdapter('win32', sandbox)
       const run = (): ReturnType<NotebookShellProcessAdapter['execute']> =>
         adapter.execute({
-          command: `[Console]::WriteLine('PATH_PROBE_OK'); try { [Console]::WriteLine([IO.File]::ReadAllText('${join(pathRoot, '.acl-probe-owned').replaceAll("'", "''")}')) } catch { [Console]::WriteLine('PATH_ROOT_DENIED') }`,
+          command: `[Console]::WriteLine('PATH_PROBE_OK'); try { [Console]::WriteLine([IO.File]::ReadAllText('${join(pathRoot, '.acl-probe-owned').replaceAll("'", "''")}')) } catch { [Console]::WriteLine('PATH_ROOT_DENIED') }; try { [Console]::WriteLine([IO.File]::ReadAllText('${join(childPathRoot, '.acl-probe-owned').replaceAll("'", "''")}')) } catch { [Console]::WriteLine('CHILD_PATH_DENIED') }`,
           runId: 'path-acl-test',
           projectId: 'path-acl-test',
           sessionId: 'path-acl-test',
@@ -163,6 +166,7 @@ it.skipIf(process.platform !== 'win32' || process.env.OPEN_SCIENCE_TEST_PATH_ACL
         stdout: expect.stringContaining('PATH_PROBE_OK')
       })
       expect(result.stdout).toContain('PATH_ROOT_DENIED')
+      expect(result.stdout).toContain('CHILD_PATH_OK')
       expect(control.stdout).toContain('test-owned')
       expect(requiredResult.stderr).toContain('grant AppContainer access to')
       expect(requiredResult.stdout).not.toContain('PATH_PROBE_OK')

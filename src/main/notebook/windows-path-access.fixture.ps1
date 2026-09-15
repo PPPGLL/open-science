@@ -52,4 +52,17 @@ public static class ReadOnlyPathFixture {
   }
 }
 '@
-[ReadOnlyPathFixture]::Hold($Directory)
+# The child remains independently grantable even while its parent rejects WRITE_DAC.
+$child = Join-Path $Directory 'bin'
+if (!(Test-Path -LiteralPath (Join-Path $child '.acl-probe-owned'))) {
+  throw 'Missing test-owned child fixture.'
+}
+$originalChildAcl = [IO.Directory]::GetAccessControl($child)
+$protectedChildAcl = [IO.Directory]::GetAccessControl($child)
+$protectedChildAcl.SetAccessRuleProtection($true, $true)
+try {
+  [IO.Directory]::SetAccessControl($child, $protectedChildAcl)
+  [ReadOnlyPathFixture]::Hold($Directory)
+} finally {
+  [IO.Directory]::SetAccessControl($child, $originalChildAcl)
+}

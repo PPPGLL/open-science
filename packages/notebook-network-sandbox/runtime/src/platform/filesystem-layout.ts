@@ -54,7 +54,10 @@ const normalizeFilesystemLayout = (input: FilesystemLayoutInput): FilesystemLayo
     ...(input.privateRoot ? { privateRoot: absolutePhysicalPath(input.privateRoot) } : {}),
     readOnlyRoots,
     ...(input.optionalReadOnlyRoots
-      ? { optionalReadOnlyRoots: shallowRoots(input.optionalReadOnlyRoots) }
+      ? {
+          // A parent may fail its optional grant while a child remains independently usable.
+          optionalReadOnlyRoots: [...new Set(input.optionalReadOnlyRoots.map(absolutePhysicalPath))]
+        }
       : {}),
     readWriteRoots,
     deniedReadRoots,
