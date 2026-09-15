@@ -1,5 +1,5 @@
 import { RuntimeWriterOwner } from './session-persistence/runtime-writer'
-import type { RuntimeWriterLease } from '../shared/runtime-writer'
+import { runtimeWriterClaimContract, type RuntimeWriterLease } from '../shared/runtime-writer'
 import {
   defineApplicationCommand,
   defineApplicationCommandGroup,
@@ -187,7 +187,7 @@ type UploadApplicationCommandOwner = InvocationOwner<{
 type DataRootWrite = <Result>(operation: () => Promise<Result>) => Promise<Result>
 
 type DataContentApplicationCommandDependencies = Readonly<{
-  isLocalRuntimeWriterAlive?: (clientId: string) => boolean | undefined
+  runtimeWriter?: RuntimeWriterOwner
   artifacts: ArtifactHandlers
   electron: ElectronDataContentApplicationCommandAdapter
   events: ApplicationEventPublisher
@@ -254,7 +254,7 @@ const dataContentApplicationCommands = Object.freeze({
     'lifecycle:claim-runtime-writer',
     readonly [],
     RuntimeWriterLease
-  >('lifecycle:claim-runtime-writer'),
+  >('lifecycle:claim-runtime-writer', runtimeWriterClaimContract),
   lifecycleClientId: defineApplicationCommand<'lifecycle:client-id', readonly [], string>(
     'lifecycle:client-id'
   ),
@@ -617,11 +617,7 @@ const registerDataContentApplicationCommands = (
   dependencies: DataContentApplicationCommandDependencies
 ): ApplicationCommandInstallation => {
   const scope = registrar.createScope()
-  const runtimeWriter = new RuntimeWriterOwner(
-    undefined,
-    undefined,
-    dependencies.isLocalRuntimeWriterAlive
-  )
+  const runtimeWriter = dependencies.runtimeWriter ?? new RuntimeWriterOwner()
 
   try {
     scope.registerGroup(dataContentApplicationCommandGroups[0], {

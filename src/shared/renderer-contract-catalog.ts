@@ -1224,7 +1224,13 @@ export const RENDERER_API_CONTRACT = Object.freeze({
   ]),
   'lifecycle.claimRuntimeWriter': callable<
     () => Promise<import('./runtime-writer').RuntimeWriterLease>
-  >()('lifecycle', ['lifecycle:claim-runtime-writer']),
+  >()('lifecycle', [
+    'lifecycle:claim-runtime-writer',
+    WEB,
+    undefined,
+    undefined,
+    RUNTIME_VALIDATED
+  ]),
   'lifecycle.getClientId': callable<() => Promise<string>>()('lifecycle', ['lifecycle:client-id']),
   'locale.initialize': callable<
     (request: InitializeLocalePreferenceRequest) => Promise<LocalePreferenceSnapshot>
