@@ -1914,7 +1914,7 @@ mod windows_host {
     // Check without changing permissions or creating an ACL recovery snapshot. An incidental
     // PATH entry may be readable/executable by the user but owned by an administrator. Keep
     // PATH unchanged: existing AppContainer access still works, and tool lookup order is stable.
-    fn can_grant_optional_read_root(path: &str) -> Result<bool> {
+    fn can_grant_optional_read_root(path: &str) -> bool {
         let name = wide(path);
         match unsafe {
             CreateFileW(
@@ -1929,17 +1929,11 @@ mod windows_host {
         } {
             Ok(handle) => {
                 drop(Handle(handle));
-                Ok(true)
+                true
             }
-            Err(error)
-                if [2, 3, 5]
-                    .iter()
-                    .any(|code| error.code() == windows::core::HRESULT::from_win32(*code)) =>
-            {
-                Ok(false)
-            }
-            Err(error) => Err(error)
-                .with_context(|| format!("inspect optional PATH directory permissions: {path}")),
+            // No permission or recovery state has changed. Unavailable network/removable
+            // paths are optional too; required roots and actual ACL mutations still fail closed.
+            Err(_) => false,
         }
     }
 
@@ -2655,7 +2649,7 @@ mod windows_host {
                 {
                     continue;
                 }
-                if can_grant_optional_read_root(path)? {
+                if can_grant_optional_read_root(path) {
                     grants.insert(path.clone(), AclGrant::ReadOnlyTree);
                 }
             }
@@ -3619,6 +3613,34 @@ mod windows_host {
                 );
             }
             fs::remove_dir_all(&parent).unwrap();
+        }
+
+        #[test]
+        fn unavailable_optional_network_root_does_not_block_an_acl_lease() {
+            let installation_id = "abab1212abab1212abab1214";
+            let parent = unique_test_root("optional-network-root");
+            fs::create_dir_all(&parent).unwrap();
+            let root = parent.join(installation_id);
+            let id = new_lease_id().unwrap();
+            let capability =
+                CommandCapability::new(command_capability_name(installation_id, &id)).unwrap();
+            let spec = LaunchSpec {
+                executable: "unused".into(),
+                arguments: vec![],
+                verbatim_arguments: false,
+                cwd: parent.to_string_lossy().into_owned(),
+                read_only_roots: vec![],
+                optional_read_only_roots: vec![format!(r"\\127.0.0.1\os-missing-share-{id}")],
+                read_write_roots: vec![],
+                denied_read_roots: vec![],
+                denied_write_roots: vec![],
+                termination_proof_path: None,
+                termination_proof_token: None,
+            };
+            let result = AclLease::acquire(installation_id, &root, id, &capability, &spec)
+                .and_then(|mut lease| lease.release());
+            fs::remove_dir_all(&parent).unwrap();
+            result.unwrap();
         }
 
         #[test]

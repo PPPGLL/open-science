@@ -10,6 +10,62 @@ import { NotebookShellProcessAdapter } from './shell-process'
 import type { NotebookProcessSandbox } from './process-sandbox'
 import { NotebookKernelExecutor } from './kernel-executor'
 
+it.skipIf(process.platform !== 'win32' || process.env.OPEN_SCIENCE_TEST_PATH_ACL !== '1')(
+  'starts an unrelated command when an optional network PATH share is unavailable',
+  async () => {
+    const root = await mkdtemp(join(tmpdir(), 'os-network-path-'))
+    const config = createRuntimeConfig({
+      resources: { root: resolve('packages/notebook-network-sandbox/vendor') },
+      policy: { allowedDomains: [], deniedDomains: [] }
+    })
+    try {
+      // Model a share disappearing after PATH discovery. Loopback cannot contact another host.
+      const missingShare = `\\\\127.0.0.1\\os-missing-share-${Date.now()}`
+      const wrapped = windowsLaunch({
+        command: '',
+        executable: join(process.env.SystemRoot!, 'System32', 'cmd.exe'),
+        args: ['/d', '/c', 'echo OPTIONAL_PATH_OK'],
+        cwd: root,
+        env: { ...process.env, PATH: missingShare, TEMP: root },
+        installationId: config.installationId,
+        ownershipRoot: config.windowsOwnershipRoot,
+        hostPath: config.windowsHostPath,
+        gatewayPort: 61200,
+        gatewayCredentials: { username: 'unused', password: 'unused' },
+        filesystem: {
+          readOnlyRoots: [],
+          optionalReadOnlyRoots: [missingShare],
+          readWriteRoots: [root],
+          deniedReadRoots: [],
+          deniedWriteRoots: []
+        }
+      })
+      const child = spawn(wrapped.argv[0], wrapped.argv.slice(1), {
+        env: wrapped.env,
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe']
+      })
+      let stdout = ''
+      let stderr = ''
+      child.stdout.on('data', (chunk) => {
+        stdout += String(chunk)
+      })
+      child.stderr.on('data', (chunk) => {
+        stderr += String(chunk)
+      })
+      const [code] = await once(child, 'close')
+      await wrapped.confirmProcessTreeTermination?.()
+      expect({ code, stdout, stderr }, stderr).toMatchObject({
+        code: 0,
+        stdout: expect.stringContaining('OPTIONAL_PATH_OK')
+      })
+    } finally {
+      await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+    }
+  },
+  60_000
+)
+
 // Requires the existing native protected sandbox. No setup/UAC or user-directory ACL mutation.
 it.skipIf(process.platform !== 'win32' || process.env.OPEN_SCIENCE_TEST_PATH_ACL !== '1')(
   'starts an unrelated command when an inherited PATH directory cannot be granted access',
