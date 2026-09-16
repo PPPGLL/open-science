@@ -63,6 +63,8 @@ type SendWorkspaceMessageIntent = {
   sessionId?: string
   // Optional durable caller identity for restart-safe application-owned prompts.
   messageId?: string
+  // Renderer-only notification: the real message now replaces the composer's pending preview.
+  onMessageAppended?: (message: SendWorkspaceMessageResult) => void
   branchSourceSessionId?: string
   branchSourceMessageId?: string
   text: string
@@ -797,6 +799,7 @@ const sendWorkspaceMessage = async (
     })
     if (!pending?.messageId) return undefined
     const pendingPrompt = { sessionId: pending.sessionId, messageId: pending.messageId }
+    input.onMessageAppended?.(pendingPrompt)
     const session = useSessionStore
       .getState()
       .sessions.find((item) => item.id === pending.sessionId)
@@ -951,6 +954,7 @@ const sendWorkspaceMessage = async (
         preserveSelection: input.preserveSelection
       })
       if (!appended) return undefined
+      input.onMessageAppended?.(appended)
       const preparation = startPendingPrompt(
         runtime,
         {
@@ -1089,6 +1093,7 @@ const sendWorkspaceMessage = async (
       preserveSelection: input.preserveSelection
     })
     if (!appended) return undefined
+    input.onMessageAppended?.(appended)
     // Application-owned stable identities need an explicit save because they may be dispatched
     // outside the mounted store saver. Ordinary user Messages are already queued by that saver;
     // drain it before provider dispatch so Delegation cannot authenticate against a stale root
@@ -1180,6 +1185,7 @@ const sendWorkspaceMessage = async (
     selectedComputeHosts: input.selectedComputeHosts
   })
   if (!pending) return undefined
+  input.onMessageAppended?.(pending)
   const preparation = startPendingPrompt(
     runtime,
     {

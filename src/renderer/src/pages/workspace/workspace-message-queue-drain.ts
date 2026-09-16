@@ -79,6 +79,7 @@ const dispatchQueuedSession = (
 
   owner.replaceItem(sessionId, item.id, {
     phase: 'sending',
+    messageAppended: false,
     error: undefined,
     deferredUntilIdle: false
   })
@@ -116,6 +117,10 @@ const dispatchQueuedSession = (
           })
         : await current.runtime.sendMessage({
             sessionId,
+            onMessageAppended: () => {
+              if (owner.dispatches.get(sessionId) !== activeDispatch) return
+              owner.replaceItem(sessionId, item.id, { messageAppended: true })
+            },
             text: item.text,
             attachments: item.snapshot?.attachments,
             annotations: item.snapshot?.annotations,
