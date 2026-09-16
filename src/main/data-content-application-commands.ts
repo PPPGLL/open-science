@@ -865,45 +865,44 @@ const registerDataContentApplicationCommands = (
       'sessions:save-session': (invocation) => {
         const originClientId = invocation.callerContext.lifecycleClientId
         const writerToken = invocation.args[1]?.runtimeWriterToken
-        const commit = <T>(run: () => Promise<T>): Promise<T> =>
-          writerToken === undefined ? run() : runtimeWriter.commit(originClientId, writerToken, run)
-        return dependencies.withDataRootWrite(() =>
-          commit(() =>
-            preserveSessionSizeLimitCode(async () => {
-              let result: Awaited<ReturnType<SessionPersistenceHandlers['saveSession']>>
-              try {
-                result =
-                  invocation.callerContext.surface === 'task'
-                    ? await dependencies.sessions.saveSession(
-                        invocation.args[0],
-                        invocation.args[1],
-                        {
-                          taskRunCommit: true
-                        }
-                      )
-                    : await dependencies.sessions.saveSession(
-                        invocation.args[0],
-                        invocation.args[1]
-                      )
-              } catch (error) {
-                if (SessionPersistence.isSessionRevisionConflictError(error)) {
-                  throw new ApplicationCommandError(
-                    SessionPersistence.SESSION_REVISION_CONFLICT_ERROR_CODE,
-                    error instanceof Error ? error.message : 'Session revision conflict.'
-                  )
-                }
-                throw error
-              }
-              publishLifecycle(
-                dependencies.events,
-                result.created
-                  ? LIFECYCLE_CHANNELS.sessionCreated
-                  : LIFECYCLE_CHANNELS.sessionUpdated,
-                { session: result.session, originClientId }
-              )
-              return result.session
-            })
+        const withRuntimeWriterWrite = <T>(run: () => Promise<T>): Promise<T> =>
+          dependencies.withDataRootWrite(() =>
+            writerToken === undefined
+              ? run()
+              : runtimeWriter.commit(originClientId, writerToken, run)
           )
+        return withRuntimeWriterWrite(() =>
+          preserveSessionSizeLimitCode(async () => {
+            let result: Awaited<ReturnType<SessionPersistenceHandlers['saveSession']>>
+            try {
+              result =
+                invocation.callerContext.surface === 'task'
+                  ? await dependencies.sessions.saveSession(
+                      invocation.args[0],
+                      invocation.args[1],
+                      {
+                        taskRunCommit: true
+                      }
+                    )
+                  : await dependencies.sessions.saveSession(invocation.args[0], invocation.args[1])
+            } catch (error) {
+              if (SessionPersistence.isSessionRevisionConflictError(error)) {
+                throw new ApplicationCommandError(
+                  SessionPersistence.SESSION_REVISION_CONFLICT_ERROR_CODE,
+                  error instanceof Error ? error.message : 'Session revision conflict.'
+                )
+              }
+              throw error
+            }
+            publishLifecycle(
+              dependencies.events,
+              result.created
+                ? LIFECYCLE_CHANNELS.sessionCreated
+                : LIFECYCLE_CHANNELS.sessionUpdated,
+              { session: result.session, originClientId }
+            )
+            return result.session
+          })
         )
       },
       'sessions:bind-task-session': (invocation) => {
