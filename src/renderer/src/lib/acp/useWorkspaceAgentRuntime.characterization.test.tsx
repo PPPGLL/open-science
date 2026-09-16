@@ -1043,11 +1043,8 @@ describe('workspace Agent Runtime hook contract', () => {
     expect(latest.pendingPermissions).toEqual([])
   })
 
-  it('keeps an approved observer permission hidden until durable history catches up', async () => {
+  it('keeps an approved permission hidden until durable history catches up', async () => {
     const { request, runtime } = arrangeRestoredPermission()
-    window.api.lifecycle = {
-      claimRuntimeWriter: vi.fn().mockResolvedValue({ validForMs: 4_000 })
-    } as never
     runtime.state = createSnapshot({ sessionIds: ['session-1'], pendingPermissions: [request] })
     await render()
     expect(latest.pendingPermissions).toEqual([request])
