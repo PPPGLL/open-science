@@ -108,6 +108,7 @@ const publicValueExports = [
   'createSessionStore',
   'findMostRecentSessionId',
   'getExternallyHydratedSessionAuthority',
+  'hydrateSession',
   'isArtifactFinalizationError',
   'isRetryableArtifactFinalizationError',
   'isExternallyHydratedSession',

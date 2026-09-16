@@ -1,4 +1,3 @@
-import { hydrateSession } from '../../stores/session-store-persistence-owner'
 import {
   ensureRuntimeWriter,
   isRuntimeWriter,
@@ -45,6 +44,7 @@ import {
 import { PENDING_UPLOAD_SESSION_ID } from '../../../../shared/uploads'
 import {
   getExternallyHydratedSessionAuthority,
+  hydrateSession,
   isArtifactFinalizationError,
   isExternallyHydratedSession,
   toPersistedSession,
