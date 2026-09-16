@@ -1043,6 +1043,37 @@ describe('workspace Agent Runtime hook contract', () => {
     expect(latest.pendingPermissions).toEqual([])
   })
 
+  it('keeps an approved observer permission hidden until durable history catches up', async () => {
+    const { request, runtime } = arrangeRestoredPermission()
+    window.api.lifecycle = {
+      claimRuntimeWriter: vi.fn().mockResolvedValue({ validForMs: 4_000 })
+    } as never
+    runtime.state = createSnapshot({ sessionIds: ['session-1'], pendingPermissions: [request] })
+    await render()
+    expect(latest.pendingPermissions).toEqual([request])
+
+    await act(async () => latest.respondToPermission(request.requestId, 'allow-once'))
+    runtime.state = createSnapshot({ sessionIds: ['session-1'] })
+    await render()
+    // The live response has arrived, but the observer still holds the old durable snapshot.
+    expect(useSessionStore.getState().sessions[0].runtimeContext?.permission?.state).toBe('pending')
+    expect(latest.pendingPermissions).toEqual([])
+    await act(async () => latest.respondToPermission(request.requestId, 'allow-once'))
+    expect(runtime.respondToPermission).toHaveBeenCalledOnce()
+
+    await act(async () => {
+      useSessionStore.getState().clearPermissionPending(request.sessionId!, {
+        authority: 'continuing',
+        requestId: request.requestId
+      })
+    })
+    expect(latest.pendingPermissions).toEqual([])
+    const nextRequest = { ...request, requestId: 'permission-next' }
+    runtime.state = createSnapshot({ sessionIds: ['session-1'], pendingPermissions: [nextRequest] })
+    await render()
+    expect(latest.pendingPermissions).toEqual([nextRequest])
+  })
+
   it('reports a permission response size limit for the affected Session', async () => {
     const request = {
       requestId: 'permission-size-limit',
