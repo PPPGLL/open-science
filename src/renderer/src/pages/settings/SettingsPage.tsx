@@ -434,7 +434,14 @@ const SettingsPage = forwardRef<SettingsPageHandle, SettingsPageProps>(function 
   // Whether the dialog is enlarged to near-fullscreen via the maximize control.
   const [isExpanded, setIsExpanded] = useState(false)
   const isMobile = useMediaQuery('(max-width: 767px)')
-  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
+  const [isMobileNavOpen, setIsMobileNavOpenState] = useState(false)
+  const isMobileNavOpenRef = useRef(false)
+  const setIsMobileNavOpen = useCallback((next: boolean) => {
+    // The dialog's Escape listener can retain an earlier render's callback.
+    // Update its navigation authority before scheduling the visual state change.
+    isMobileNavOpenRef.current = next
+    setIsMobileNavOpenState(next)
+  }, [])
   const mobileNavRef = useRef<HTMLElement | null>(null)
   const mobileNavTriggerRef = useRef<HTMLButtonElement | null>(null)
   const mobileNavWasOpenRef = useRef(false)
@@ -1218,7 +1225,7 @@ const SettingsPage = forwardRef<SettingsPageHandle, SettingsPageProps>(function 
               event.preventDefault()
               return
             }
-            if (!isMobileNavOpen) return
+            if (!isMobileNavOpenRef.current) return
             event.preventDefault()
             setIsMobileNavOpen(false)
           }}
