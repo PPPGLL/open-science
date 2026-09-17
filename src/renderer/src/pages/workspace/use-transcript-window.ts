@@ -64,7 +64,8 @@ const useTranscriptWindow = (
   expandAtScrollEdge: (previousScrollTop: number) => void
   followEnd: () => void
   isFollowingEnd: boolean
-  recordUserScroll: () => void
+  recordUserScroll: (dragging?: boolean) => void
+  finishUserScroll: () => void
 } => {
   const [state, setState] = useState<TranscriptWindowState>(() => ({
     scopeId: undefined,
@@ -75,6 +76,8 @@ const useTranscriptWindow = (
   const pendingTargetRef = useRef<ReadingAnchor | undefined>(undefined)
   const readingAnchorRef = useRef<ReadingAnchor | undefined>(undefined)
   const findRestoreRef = useRef<FindSnapshot | undefined>(undefined)
+  const scrollInputRef = useRef<{ top: number; dragging: boolean } | undefined>(undefined)
+  const scrollInputFrameRef = useRef<number | undefined>(undefined)
   const finding = state.scopeId === scopeId && state.finding === true
   const initialStart = Math.max(0, items.length - TRANSCRIPT_WINDOW_SIZE)
   if (state.scopeId !== scopeId) {
@@ -90,6 +93,12 @@ const useTranscriptWindow = (
     readingAnchorRef.current = undefined
     pendingTargetRef.current = undefined
     findRestoreRef.current = undefined
+    scrollInputRef.current = undefined
+    return () => {
+      if (scrollInputFrameRef.current !== undefined)
+        cancelAnimationFrame(scrollInputFrameRef.current)
+      scrollInputRef.current = undefined
+    }
   }, [scopeId])
   const stateMatchesScope = state.scopeId === scopeId && state.itemCount > 0
   const wasPinnedToEnd =
@@ -232,27 +241,33 @@ const useTranscriptWindow = (
     }
   }, [items, scopeId, viewportRef])
 
-  const recordUserScroll = (): void => {
+  const finishUserScroll = (): void => {
+    if (scrollInputFrameRef.current !== undefined) cancelAnimationFrame(scrollInputFrameRef.current)
+    // Native scroll events precede animation frames. An input that causes no movement must
+    // not be mistaken for a later layout scroll; scrollbar drags stay armed until release.
+    scrollInputFrameRef.current = requestAnimationFrame(() => {
+      scrollInputRef.current = undefined
+      scrollInputFrameRef.current = undefined
+    })
+  }
+
+  const recordUserScroll = (dragging = false): void => {
     const snapshot = findRestoreRef.current
     if (snapshot && snapshot.window.scopeId === scopeId) {
       snapshot.target = undefined
       snapshot.followEnd = false
       return
     }
-    // Follow intent changes on reader input, not on scroll events from layout/resize or
-    // the scroller's own anchoring. Those events can arrive before bottom-follow settles.
-    if (!wasPinnedToEnd) return
-    setState({
-      scopeId,
-      itemCount: items.length,
-      start,
-      end,
-      anchorId: items[start]?.id,
-      followEnd: false
-    })
+    const viewport = viewportRef.current
+    if (!wasPinnedToEnd || !viewport) return
+    scrollInputRef.current = { top: viewport.scrollTop, dragging }
+    if (scrollInputFrameRef.current !== undefined) cancelAnimationFrame(scrollInputFrameRef.current)
+    scrollInputFrameRef.current = undefined
+    if (!dragging) finishUserScroll()
   }
 
   const followEnd = (): void => {
+    scrollInputRef.current = undefined
     const snapshot = findRestoreRef.current
     if (snapshot && snapshot.window.scopeId === scopeId) {
       snapshot.target = undefined
@@ -275,10 +290,26 @@ const useTranscriptWindow = (
   const expandAtScrollEdge = (previousScrollTop: number): void => {
     const viewport = viewportRef.current
     if (!viewport) return
+    const input = scrollInputRef.current
+    const movedIntoHistory = !!input && viewport.scrollTop < input.top
+    const keepFollowing = wasPinnedToEnd && !movedIntoHistory
+    if (input && !input.dragging) scrollInputRef.current = undefined
     // Pacing can pause window expansion, but must not freeze the reader's scroll position.
     readingAnchorRef.current =
-      !finding && wasPinnedToEnd ? undefined : captureReadingAnchor(scopeId, viewport)
-    if (presentationBarrierIndex >= 0) return
+      !finding && keepFollowing ? undefined : captureReadingAnchor(scopeId, viewport)
+    if (presentationBarrierIndex >= 0) {
+      if (wasPinnedToEnd && movedIntoHistory) {
+        setState({
+          scopeId,
+          itemCount: items.length,
+          start,
+          end,
+          anchorId: items[start]?.id,
+          followEnd: false
+        })
+      }
+      return
+    }
     const prefetchDistance = Math.max(64, viewport.clientHeight)
     if (finding) {
       const snapshot = findRestoreRef.current
@@ -290,7 +321,7 @@ const useTranscriptWindow = (
       return
     }
     const following =
-      wasPinnedToEnd ||
+      keepFollowing ||
       (end === items.length &&
         viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 0.5)
     if (following) readingAnchorRef.current = undefined
@@ -400,6 +431,7 @@ const useTranscriptWindow = (
     expandAtScrollEdge,
     followEnd,
     recordUserScroll,
+    finishUserScroll,
     isFollowingEnd: !finding && (!stateMatchesScope || wasPinnedToEnd)
   }
 }

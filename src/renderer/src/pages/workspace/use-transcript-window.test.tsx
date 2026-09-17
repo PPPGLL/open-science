@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, createRef } from 'react'
 import { createRoot } from 'react-dom/client'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { useTranscriptWindow } from './use-transcript-window'
 import type { WorkspaceConversationTimelineItem } from './workspace-conversation-timeline'
@@ -19,6 +19,42 @@ const items = Array.from(
 )
 
 describe('useTranscriptWindow', () => {
+  it('expires unused input before a later layout scroll', () => {
+    let expire!: FrameRequestCallback
+    const frame = vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((callback) => {
+      expire = callback
+      return 1
+    })
+    const cancel = vi.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(() => {})
+    const root = createRoot(document.createElement('div'))
+    const viewport = document.createElement('div')
+    Object.defineProperties(viewport, {
+      clientHeight: { value: 800 },
+      scrollHeight: { value: 10000 },
+      scrollTop: { writable: true, value: 9200 }
+    })
+    let current!: ReturnType<typeof useTranscriptWindow>
+    const Harness = ({ rows = items }: { rows?: typeof items }): null => {
+      current = useTranscriptWindow('session', rows, -1, { current: viewport })
+      return null
+    }
+    try {
+      act(() => root.render(<Harness />))
+      act(() => current.recordUserScroll())
+      act(() => expire(16))
+      viewport.scrollTop = 9100
+      act(() => current.expandAtScrollEdge(9200))
+      act(() => root.render(<Harness rows={[...items, { ...items[0], id: 'latest' }]} />))
+      expect(current.isFollowingEnd).toBe(true)
+      expect(current.entries.at(-1)?.item.id).toBe('latest')
+      expect(current.entries).toHaveLength(80)
+    } finally {
+      act(() => root.unmount())
+      frame.mockRestore()
+      cancel.mockRestore()
+    }
+  })
+
   it('keeps new messages mounted after a layout scroll away from the bottom', () => {
     const container = document.createElement('div')
     const root = createRoot(container)
@@ -176,6 +212,7 @@ describe('useTranscriptWindow', () => {
       try {
         act(() => root.render(<Harness />))
         expect(viewport.childElementCount).toBe(80)
+        viewport.scrollTop = viewport.scrollHeight - viewport.clientHeight
         if (pin !== 'none') {
           const pinned = viewport.lastElementChild as HTMLElement
           if (pin === 'selection') {
@@ -334,7 +371,9 @@ describe('useTranscriptWindow', () => {
     const render = (scope: string, rows = items): void =>
       act(() => root.render(<Harness scope={scope} rows={rows} />))
     render('session:branch-a')
+    viewport.scrollTop = 9000
     act(() => current.recordUserScroll())
+    viewport.scrollTop = 5000
     act(() => current.expandAtScrollEdge(9000))
     const originalIds = current.entries.map(({ item }) => item.id)
     const inserted = [
