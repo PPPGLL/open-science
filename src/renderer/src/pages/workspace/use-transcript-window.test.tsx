@@ -19,13 +19,50 @@ const items = Array.from(
 )
 
 describe('useTranscriptWindow', () => {
+  it.each(['movement', 'height', 'width', 'contentHeight'])(
+    'retains delayed input for movement but ignores a changed %s',
+    (change) => {
+      vi.useFakeTimers()
+      const root = createRoot(document.createElement('div'))
+      const viewport = document.createElement('div')
+      Object.defineProperties(viewport, {
+        clientHeight: { writable: true, value: 800 },
+        clientWidth: { writable: true, value: 600 },
+        scrollHeight: { writable: true, value: 10000 },
+        scrollTop: { writable: true, value: 9200 }
+      })
+      let current!: ReturnType<typeof useTranscriptWindow>
+      const Harness = ({ rows = items }: { rows?: typeof items }): null => {
+        current = useTranscriptWindow('session', rows, -1, { current: viewport })
+        return null
+      }
+      try {
+        act(() => root.render(<Harness />))
+        act(() => current.recordUserScroll())
+        // Multiple paints and even a no-movement scroll must not consume native input.
+        act(() => vi.advanceTimersByTime(80))
+        act(() => current.expandAtScrollEdge(9200))
+        if (change === 'height') Object.defineProperty(viewport, 'clientHeight', { value: 900 })
+        if (change === 'width') Object.defineProperty(viewport, 'clientWidth', { value: 700 })
+        if (change === 'contentHeight')
+          Object.defineProperty(viewport, 'scrollHeight', { value: 9900 })
+        viewport.scrollTop = 9100
+        act(() => current.expandAtScrollEdge(9200))
+        act(() => root.render(<Harness rows={[...items, { ...items[0], id: 'latest' }]} />))
+        expect(current.isFollowingEnd).toBe(change !== 'movement')
+        expect(current.entries.at(-1)?.item.id).toBe(
+          change === 'movement' ? 'message-120' : 'latest'
+        )
+        expect(current.entries).toHaveLength(80)
+      } finally {
+        act(() => root.unmount())
+        vi.useRealTimers()
+      }
+    }
+  )
+
   it('expires unused input before a later layout scroll', () => {
-    let expire!: FrameRequestCallback
-    const frame = vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((callback) => {
-      expire = callback
-      return 1
-    })
-    const cancel = vi.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(() => {})
+    vi.useFakeTimers()
     const root = createRoot(document.createElement('div'))
     const viewport = document.createElement('div')
     Object.defineProperties(viewport, {
@@ -41,7 +78,7 @@ describe('useTranscriptWindow', () => {
     try {
       act(() => root.render(<Harness />))
       act(() => current.recordUserScroll())
-      act(() => expire(16))
+      act(() => vi.advanceTimersByTime(1000))
       viewport.scrollTop = 9100
       act(() => current.expandAtScrollEdge(9200))
       act(() => root.render(<Harness rows={[...items, { ...items[0], id: 'latest' }]} />))
@@ -50,8 +87,7 @@ describe('useTranscriptWindow', () => {
       expect(current.entries).toHaveLength(80)
     } finally {
       act(() => root.unmount())
-      frame.mockRestore()
-      cancel.mockRestore()
+      vi.useRealTimers()
     }
   })
 

@@ -12,6 +12,9 @@ import type { WorkspaceConversationTimelineItem } from './workspace-conversation
 import { findMessageTarget } from './workspace-run-marks'
 
 const TRANSCRIPT_WINDOW_SIZE = 80
+// Native keyboard scrolling may start after the first paint. Keep a bounded input
+// signal until movement, rather than assuming an ordering between scroll and rAF.
+const SCROLL_INPUT_TIMEOUT_MS = 500
 
 type TranscriptWindowState = {
   scopeId: string | undefined
@@ -76,8 +79,11 @@ const useTranscriptWindow = (
   const pendingTargetRef = useRef<ReadingAnchor | undefined>(undefined)
   const readingAnchorRef = useRef<ReadingAnchor | undefined>(undefined)
   const findRestoreRef = useRef<FindSnapshot | undefined>(undefined)
-  const scrollInputRef = useRef<{ top: number; dragging: boolean } | undefined>(undefined)
-  const scrollInputFrameRef = useRef<number | undefined>(undefined)
+  const scrollInputRef = useRef<
+    | { top: number; height: number; width: number; contentHeight: number; dragging: boolean }
+    | undefined
+  >(undefined)
+  const scrollInputTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const finding = state.scopeId === scopeId && state.finding === true
   const initialStart = Math.max(0, items.length - TRANSCRIPT_WINDOW_SIZE)
   if (state.scopeId !== scopeId) {
@@ -95,8 +101,7 @@ const useTranscriptWindow = (
     findRestoreRef.current = undefined
     scrollInputRef.current = undefined
     return () => {
-      if (scrollInputFrameRef.current !== undefined)
-        cancelAnimationFrame(scrollInputFrameRef.current)
+      clearTimeout(scrollInputTimerRef.current)
       scrollInputRef.current = undefined
     }
   }, [scopeId])
@@ -242,13 +247,13 @@ const useTranscriptWindow = (
   }, [items, scopeId, viewportRef])
 
   const finishUserScroll = (): void => {
-    if (scrollInputFrameRef.current !== undefined) cancelAnimationFrame(scrollInputFrameRef.current)
-    // Native scroll events precede animation frames. An input that causes no movement must
-    // not be mistaken for a later layout scroll; scrollbar drags stay armed until release.
-    scrollInputFrameRef.current = requestAnimationFrame(() => {
+    clearTimeout(scrollInputTimerRef.current)
+    // A no-op must not arm a later, unrelated scroll indefinitely. Geometry changes
+    // invalidate the signal immediately; scrollbar drags stay armed until release.
+    scrollInputTimerRef.current = setTimeout(() => {
       scrollInputRef.current = undefined
-      scrollInputFrameRef.current = undefined
-    })
+      scrollInputTimerRef.current = undefined
+    }, SCROLL_INPUT_TIMEOUT_MS)
   }
 
   const recordUserScroll = (dragging = false): void => {
@@ -259,10 +264,16 @@ const useTranscriptWindow = (
       return
     }
     const viewport = viewportRef.current
-    if (!wasPinnedToEnd || !viewport) return
-    scrollInputRef.current = { top: viewport.scrollTop, dragging }
-    if (scrollInputFrameRef.current !== undefined) cancelAnimationFrame(scrollInputFrameRef.current)
-    scrollInputFrameRef.current = undefined
+    if (!wasPinnedToEnd || !viewport || viewport.scrollTop <= 0) return
+    scrollInputRef.current = {
+      top: viewport.scrollTop,
+      height: viewport.clientHeight,
+      width: viewport.clientWidth,
+      contentHeight: viewport.scrollHeight,
+      dragging
+    }
+    clearTimeout(scrollInputTimerRef.current)
+    scrollInputTimerRef.current = undefined
     if (!dragging) finishUserScroll()
   }
 
@@ -291,9 +302,17 @@ const useTranscriptWindow = (
     const viewport = viewportRef.current
     if (!viewport) return
     const input = scrollInputRef.current
-    const movedIntoHistory = !!input && viewport.scrollTop < input.top
+    const sameGeometry =
+      !!input &&
+      viewport.clientHeight === input.height &&
+      viewport.clientWidth === input.width &&
+      viewport.scrollHeight === input.contentHeight
+    const movedIntoHistory = sameGeometry && viewport.scrollTop < input.top
     const keepFollowing = wasPinnedToEnd && !movedIntoHistory
-    if (input && !input.dragging) scrollInputRef.current = undefined
+    if (input && (!sameGeometry || (!input.dragging && viewport.scrollTop !== input.top))) {
+      scrollInputRef.current = undefined
+      clearTimeout(scrollInputTimerRef.current)
+    }
     // Pacing can pause window expansion, but must not freeze the reader's scroll position.
     readingAnchorRef.current =
       !finding && keepFollowing ? undefined : captureReadingAnchor(scopeId, viewport)
