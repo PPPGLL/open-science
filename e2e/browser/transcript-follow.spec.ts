@@ -1,21 +1,41 @@
 import { expect, test } from '@playwright/test'
 
 for (const key of ['PageUp', 'ArrowUp']) {
-  test(`native ${key} releases follow before an appended message`, async ({ page }) => {
-    await page.goto('/transcript-follow.html')
-    const viewport = page.getByLabel('Transcript')
-    await viewport.focus()
-    await expect.poll(() => viewport.evaluate((node) => node.scrollTop)).toBe(7700)
-    // Playwright sends real keyboard input. Chromium starts its native scrolling after
-    // the first animation frame; synthetic keydown + scroll cannot reproduce this.
-    await page.keyboard.press(key)
-    await expect.poll(() => viewport.evaluate((node) => node.scrollTop)).toBeLessThan(7700)
-    await expect(page.getByTestId('following')).toHaveText('false')
-    await page.getByRole('button', { name: 'Append', exact: true }).click()
-    await expect(viewport.locator('[data-message-id]')).toHaveCount(80)
-    await expect(viewport.locator('[data-message-id="item-121"]')).toHaveCount(0)
-    await expect.poll(() => viewport.evaluate((node) => node.scrollTop)).toBeLessThan(7700)
-  })
+  for (const streaming of ['none', 'growth', 'anchored-growth'] as const) {
+    test(`native ${key} releases follow before an appended message (${streaming})`, async ({
+      page
+    }) => {
+      await page.goto('/transcript-follow.html')
+      const viewport = page.getByLabel('Transcript')
+      await viewport.focus()
+      await expect.poll(() => viewport.evaluate((node) => node.scrollTop)).toBe(7700)
+      if (streaming !== 'none') {
+        await viewport.evaluate((node, anchorGrowth) => {
+          node.addEventListener(
+            'keydown',
+            () => {
+              // Model a streamed reply gaining a line between input and native movement.
+              requestAnimationFrame(() => {
+                ;(node.lastElementChild as HTMLElement).style.height = '140px'
+                if (anchorGrowth) node.scrollTop += 40
+              })
+            },
+            { once: true }
+          )
+        }, streaming === 'anchored-growth')
+      }
+      // Playwright sends real keyboard input. Chromium starts its native scrolling after
+      // the first animation frame; synthetic keydown + scroll cannot reproduce this.
+      await page.keyboard.press(key)
+      const bottom = streaming === 'none' ? 7700 : 7740
+      await expect.poll(() => viewport.evaluate((node) => node.scrollTop)).toBeLessThan(bottom)
+      await expect(page.getByTestId('following')).toHaveText('false')
+      await page.getByRole('button', { name: 'Append', exact: true }).click()
+      await expect(viewport.locator('[data-message-id]')).toHaveCount(80)
+      await expect(viewport.locator('[data-message-id="item-121"]')).toHaveCount(0)
+      await expect.poll(() => viewport.evaluate((node) => node.scrollTop)).toBeLessThan(bottom)
+    })
+  }
 }
 
 for (const key of ['ArrowDown', 'PageDown', 'End']) {

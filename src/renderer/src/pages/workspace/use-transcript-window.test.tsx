@@ -19,8 +19,8 @@ const items = Array.from(
 )
 
 describe('useTranscriptWindow', () => {
-  it.each(['movement', 'height', 'width', 'contentHeight'])(
-    'retains delayed input for movement but ignores a changed %s',
+  it.each(['movement', 'height', 'width', 'contentHeight', 'contentGrowth', 'anchoredGrowth'])(
+    'handles delayed input with %s',
     (change) => {
       vi.useFakeTimers()
       const root = createRoot(document.createElement('div'))
@@ -46,13 +46,19 @@ describe('useTranscriptWindow', () => {
         if (change === 'width') Object.defineProperty(viewport, 'clientWidth', { value: 700 })
         if (change === 'contentHeight')
           Object.defineProperty(viewport, 'scrollHeight', { value: 9900 })
-        viewport.scrollTop = 9100
+        if (change === 'contentGrowth' || change === 'anchoredGrowth') {
+          Object.defineProperty(viewport, 'scrollHeight', { value: 10040 })
+          if (change === 'anchoredGrowth') viewport.scrollTop = 9240
+          act(() => current.expandAtScrollEdge(9200))
+          expect(current.isFollowingEnd).toBe(true)
+        }
+        // An ArrowUp may move less than the amount added by scroll anchoring.
+        viewport.scrollTop = change === 'anchoredGrowth' ? 9220 : 9100
         act(() => current.expandAtScrollEdge(9200))
         act(() => root.render(<Harness rows={[...items, { ...items[0], id: 'latest' }]} />))
-        expect(current.isFollowingEnd).toBe(change !== 'movement')
-        expect(current.entries.at(-1)?.item.id).toBe(
-          change === 'movement' ? 'message-120' : 'latest'
-        )
+        const releasedFollow = ['movement', 'contentGrowth', 'anchoredGrowth'].includes(change)
+        expect(current.isFollowingEnd).toBe(!releasedFollow)
+        expect(current.entries.at(-1)?.item.id).toBe(releasedFollow ? 'message-120' : 'latest')
         expect(current.entries).toHaveLength(80)
       } finally {
         act(() => root.unmount())

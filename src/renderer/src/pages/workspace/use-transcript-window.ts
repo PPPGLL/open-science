@@ -248,8 +248,8 @@ const useTranscriptWindow = (
 
   const finishUserScroll = (): void => {
     clearTimeout(scrollInputTimerRef.current)
-    // A no-op must not arm a later, unrelated scroll indefinitely. Geometry changes
-    // invalidate the signal immediately; scrollbar drags stay armed until release.
+    // A no-op must not arm a later, unrelated scroll indefinitely. Viewport changes
+    // and content shrinkage invalidate it; scrollbar drags stay armed until release.
     scrollInputTimerRef.current = setTimeout(() => {
       scrollInputRef.current = undefined
       scrollInputTimerRef.current = undefined
@@ -302,16 +302,22 @@ const useTranscriptWindow = (
     const viewport = viewportRef.current
     if (!viewport) return
     const input = scrollInputRef.current
-    const sameGeometry =
+    // Streaming growth cannot clamp scrollTop upward. Keep the pending input when
+    // the reply grows, so native keyboard movement can still release following.
+    const inputStillValid =
       !!input &&
       viewport.clientHeight === input.height &&
       viewport.clientWidth === input.width &&
-      viewport.scrollHeight === input.contentHeight
-    const movedIntoHistory = sameGeometry && viewport.scrollTop < input.top
+      viewport.scrollHeight >= input.contentHeight
+    const movedIntoHistory = inputStillValid && viewport.scrollTop < input.top
     const keepFollowing = wasPinnedToEnd && !movedIntoHistory
-    if (input && (!sameGeometry || (!input.dragging && viewport.scrollTop !== input.top))) {
+    if (input && (!inputStillValid || (!input.dragging && movedIntoHistory))) {
       scrollInputRef.current = undefined
       clearTimeout(scrollInputTimerRef.current)
+    } else if (input) {
+      // Growth can anchor the viewport farther down before native input moves it up.
+      input.top = viewport.scrollTop
+      input.contentHeight = viewport.scrollHeight
     }
     // Pacing can pause window expansion, but must not freeze the reader's scroll position.
     readingAnchorRef.current =
