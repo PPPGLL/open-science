@@ -4348,6 +4348,9 @@ describe('WorkspaceMessageScroller artifact click behavior', () => {
         scrollHeight: { configurable: true, value: 10_000 },
         scrollTop: { configurable: true, writable: true, value: 9000 }
       })
+      await act(async () =>
+        viewport.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -120 }))
+      )
       await act(async () => viewport.dispatchEvent(new Event('scroll', { bubbles: true })))
       viewport.scrollTop = 5000
       await act(async () => viewport.dispatchEvent(new Event('scroll', { bubbles: true })))
@@ -4355,6 +4358,69 @@ describe('WorkspaceMessageScroller artifact click behavior', () => {
       await render(240 + count)
       expect(scrollToEndMock).not.toHaveBeenCalled()
       expect(rows.filter((node) => node.isConnected)).toHaveLength(80)
+    }
+  )
+
+  it.each(['layout', 'wheel', 'touch', 'keyboard', 'scrollbar'] as const)(
+    'updates the live tail after %s scrolling without overriding reader intent',
+    async (input) => {
+      const { WorkspaceMessageScroller } = await import('./WorkspaceMessageScroller')
+      root = createRoot(container)
+      const messages = Array.from({ length: 121 }, (_, index) =>
+        createMessage({
+          id: `restore-${index}`,
+          content: `Restore message ${index}`,
+          createdAt: 1710000000000 + index,
+          updatedAt: 1710000000000 + index
+        })
+      )
+      const render = async (length: number): Promise<void> => {
+        await act(async () =>
+          root.render(
+            <WorkspaceMessageScroller
+              activeSession={createSession({
+                messages: messages.slice(0, length),
+                agentPromptInFlight: true,
+                awaitingFirstAgentOutput: true
+              })}
+              onSendEditedMessage={vi.fn()}
+            />
+          )
+        )
+      }
+      await render(120)
+      const viewport = container.querySelector<HTMLDivElement>(
+        '[data-testid="message-scroller-viewport"]'
+      )!
+      Object.defineProperties(viewport, {
+        clientHeight: { configurable: true, value: 800 },
+        scrollHeight: { configurable: true, value: 10000 },
+        scrollTop: { configurable: true, writable: true, value: 9100 }
+      })
+      expect(container.textContent).toContain('Thinking')
+      if (input !== 'layout') {
+        const event =
+          input === 'wheel'
+            ? new WheelEvent('wheel', { bubbles: true, deltaY: -100 })
+            : input === 'keyboard'
+              ? new KeyboardEvent('keydown', { bubbles: true, key: 'PageUp' })
+              : new Event(input === 'touch' ? 'touchmove' : 'pointerdown', { bubbles: true })
+        await act(async () => viewport.dispatchEvent(event))
+      }
+      await act(async () => viewport.dispatchEvent(new Event('scroll', { bubbles: true })))
+      scrollToEndMock.mockClear()
+      await render(121)
+      const latest = container.querySelector('[data-message-id="restore-120"]')
+      if (input === 'layout') {
+        expect(latest).not.toBeNull()
+        expect(container.textContent).toContain('Thinking')
+        expect(scrollToEndMock).toHaveBeenCalled()
+      } else {
+        expect(latest).toBeNull()
+        expect(container.textContent).not.toContain('Thinking')
+        expect(scrollToEndMock).not.toHaveBeenCalled()
+      }
+      expect(container.querySelectorAll('[data-message-id^="restore-"]')).toHaveLength(80)
     }
   )
 

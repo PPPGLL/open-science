@@ -237,7 +237,19 @@ const useTranscriptWindow = (
     if (snapshot && snapshot.window.scopeId === scopeId) {
       snapshot.target = undefined
       snapshot.followEnd = false
+      return
     }
+    // Follow intent changes on reader input, not on scroll events from layout/resize or
+    // the scroller's own anchoring. Those events can arrive before bottom-follow settles.
+    if (!wasPinnedToEnd) return
+    setState({
+      scopeId,
+      itemCount: items.length,
+      start,
+      end,
+      anchorId: items[start]?.id,
+      followEnd: false
+    })
   }
 
   const followEnd = (): void => {
@@ -264,7 +276,8 @@ const useTranscriptWindow = (
     const viewport = viewportRef.current
     if (!viewport) return
     // Pacing can pause window expansion, but must not freeze the reader's scroll position.
-    readingAnchorRef.current = captureReadingAnchor(scopeId, viewport)
+    readingAnchorRef.current =
+      !finding && wasPinnedToEnd ? undefined : captureReadingAnchor(scopeId, viewport)
     if (presentationBarrierIndex >= 0) return
     const prefetchDistance = Math.max(64, viewport.clientHeight)
     if (finding) {
@@ -277,8 +290,9 @@ const useTranscriptWindow = (
       return
     }
     const following =
-      end === items.length &&
-      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 0.5
+      wasPinnedToEnd ||
+      (end === items.length &&
+        viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 0.5)
     if (following) readingAnchorRef.current = undefined
     let nextStart = start
     let nextEnd = end

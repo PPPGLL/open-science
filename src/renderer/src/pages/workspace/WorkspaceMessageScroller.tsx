@@ -1983,13 +1983,17 @@ const WorkspaceMessageScrollerImpl = ({
 
               {presentationBarrierIndex < 0 ? trailingContent : null}
 
-              {isResumingSession && activeSession ? (
+              {transcriptWindow.end === conversationItems.length &&
+              isResumingSession &&
+              activeSession ? (
                 <WorkspaceAgentLoadingRow
                   sessionId={activeSession.id}
                   phase="resuming"
                   visiblePermissionPending={visiblePermissionPending}
                 />
-              ) : agentLoadingPhase !== 'hidden' && activeSession ? (
+              ) : transcriptWindow.end === conversationItems.length &&
+                agentLoadingPhase !== 'hidden' &&
+                activeSession ? (
                 <WorkspaceAgentLoadingRow
                   sessionId={activeSession.id}
                   phase={agentLoadingPhase}

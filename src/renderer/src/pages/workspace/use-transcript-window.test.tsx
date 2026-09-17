@@ -19,6 +19,42 @@ const items = Array.from(
 )
 
 describe('useTranscriptWindow', () => {
+  it('keeps new messages mounted after a layout scroll away from the bottom', () => {
+    const container = document.createElement('div')
+    const root = createRoot(container)
+    const viewport = document.createElement('div')
+    Object.defineProperties(viewport, {
+      clientHeight: { value: 800 },
+      scrollHeight: { value: 10000 },
+      scrollTop: { writable: true, value: 9100 }
+    })
+    let current!: ReturnType<typeof useTranscriptWindow>
+    const Harness = ({ rows = items }: { rows?: typeof items }): null => {
+      current = useTranscriptWindow('session', rows, -1, { current: viewport })
+      return null
+    }
+    try {
+      act(() => root.render(<Harness />))
+      // Restoring/resizing a window can deliver a scroll before bottom-follow settles.
+      // No wheel, touch, scrollbar, or navigation-key input occurred.
+      act(() => current.expandAtScrollEdge(9200))
+      const appended = [
+        ...items,
+        {
+          id: 'latest',
+          type: 'message',
+          message: { id: 'latest' }
+        } as WorkspaceConversationTimelineItem
+      ]
+      act(() => root.render(<Harness rows={appended} />))
+      expect(current.isFollowingEnd).toBe(true)
+      expect(current.entries.at(-1)?.item.id).toBe('latest')
+      expect(current.entries).toHaveLength(80)
+    } finally {
+      act(() => root.unmount())
+    }
+  })
+
   it('keeps the latest reading position when scrolling during a presentation barrier', () => {
     const viewport = document.createElement('div')
     document.body.appendChild(viewport)
@@ -63,6 +99,7 @@ describe('useTranscriptWindow', () => {
     }
     try {
       act(() => root.render(<Harness barrier={-1} />))
+      act(() => current.recordUserScroll())
       viewport.scrollTop = 600
       act(() => current.expandAtScrollEdge(1200))
       act(() => root.render(<Harness barrier={19} />))
@@ -123,6 +160,7 @@ describe('useTranscriptWindow', () => {
         )
       }
       const expand = (direction: 'up' | 'down', bounded = true): void => {
+        act(() => current.recordUserScroll())
         viewport.scrollTop = direction === 'up' ? 0 : viewport.scrollHeight - 400
         const anchor = Array.from(viewport.children).find(
           (node) => node.getBoundingClientRect().bottom > 100
@@ -296,6 +334,7 @@ describe('useTranscriptWindow', () => {
     const render = (scope: string, rows = items): void =>
       act(() => root.render(<Harness scope={scope} rows={rows} />))
     render('session:branch-a')
+    act(() => current.recordUserScroll())
     act(() => current.expandAtScrollEdge(9000))
     const originalIds = current.entries.map(({ item }) => item.id)
     const inserted = [
