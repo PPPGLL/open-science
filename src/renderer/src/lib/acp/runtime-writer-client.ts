@@ -72,6 +72,7 @@ export const isRuntimeWriter = (): boolean => {
   const c = getClient()
   return c ? Boolean(c.token && c.token === activatedToken) : true
 }
-export const runtimeWriterSaveOptions = (): { runtimeWriterToken?: string } => ({
-  ...(isRuntimeWriter() && getClient()?.token ? { runtimeWriterToken: getClient()!.token } : {})
-})
+export const runtimeWriterSaveOptions = (): { runtimeWriterToken: string } | undefined => {
+  const token = isRuntimeWriter() ? getClient()?.token : undefined
+  return token ? { runtimeWriterToken: token } : undefined
+}

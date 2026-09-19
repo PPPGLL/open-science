@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
-import { RuntimeWriterClient } from './runtime-writer-client'
+import { RuntimeWriterClient, runtimeWriterSaveOptions } from './runtime-writer-client'
 describe('runtime writer client', () => {
+  it('does not produce save options without the active lease', () => {
+    expect(runtimeWriterSaveOptions()).toBeUndefined()
+  })
+
   it('deduplicates claims and keeps observer decisions read-only', async () => {
     const claim = vi.fn(async () => ({ validForMs: 4000 }))
     const client = new RuntimeWriterClient(claim, () => 0)

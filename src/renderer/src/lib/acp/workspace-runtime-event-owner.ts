@@ -451,7 +451,7 @@ const createLiveWorkspaceRuntimeEventProcessor = (): WorkspaceRuntimeEventProces
       ) {
         return true
       }
-      const writerOptions = runtimeWriterSaveOptions()
+      const writerOptions = runtimeWriterSaveOptions() ?? {}
       const applied = await applyWorkspaceRuntimeEvent(event, {
         canProject: () =>
           isRuntimeWriter() &&
