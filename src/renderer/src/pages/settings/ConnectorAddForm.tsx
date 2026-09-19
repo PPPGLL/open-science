@@ -721,6 +721,7 @@ export function ConnectorAddForm({
         ) : null}
         {editTargetMissing ? (
           <ErrorNotice
+            inline
             role="alert"
             tone="amber"
             description={t('This Connector no longer exists. Your draft has not been saved.')}
@@ -1287,7 +1288,7 @@ export function ConnectorAddForm({
                               </div>
                               <p className={helperClassName}>
                                 {t(
-                                  'Register this callback URI with your OAuth provider. Open Science adds an available port at runtime.'
+                                  'Register this callback URI with your OAuth provider. Open-Science adds an available port at runtime.'
                                 )}
                               </p>
                               {!customRedirectUriOpen ? (

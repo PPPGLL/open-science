@@ -492,6 +492,7 @@ import type {
   RespondApprovalRequest,
   RespondConnectorCredentialRequest,
   UpsertProviderRequest,
+  SaveValidatedProviderResult,
   ValidateProviderRequest,
   ValidateProviderResult
 } from './settings'
@@ -502,6 +503,7 @@ import type { NetworkInfo } from './network'
 import type {
   ActiveSessionInfo,
   DataRootInspection,
+  DataRootSelection,
   DataRootValidationResult,
   DiscardMigratedCopyResult,
   MigrationOutcome,
@@ -1824,6 +1826,9 @@ export const RENDERER_API_CONTRACT = Object.freeze({
   'sessions.exportConversation': callable<
     (request: ExportConversationRequest) => Promise<ExportConversationResult>
   >()('sessions', ['sessions:export-conversation', MAPPED_ELECTRON]),
+  'sessions.fork': callable<
+    (request: SessionPackageRequest) => Promise<SessionPackageRequest | null>
+  >()('sessions', ['sessions:fork', MAPPED_ELECTRON, undefined, undefined, RUNTIME_VALIDATED]),
   'sessions.exportPackage': callable<
     (request: SessionPackageRequest) => Promise<SessionPackageExportResult>
   >()('sessions', [
@@ -2405,6 +2410,9 @@ export const RENDERER_API_CONTRACT = Object.freeze({
   'settings.upsertProvider': callable<
     (request: UpsertProviderRequest) => Promise<SettingsSnapshot>
   >()('settings', ['settings:upsert-provider']),
+  'settings.saveValidatedProvider': callable<
+    (request: UpsertProviderRequest) => Promise<SaveValidatedProviderResult>
+  >()('settings', ['settings:save-validated-provider']),
   'settings.validateProvider': callable<
     (request: ValidateProviderRequest) => Promise<ValidateProviderResult>
   >()('settings', ['settings:validate-provider']),
@@ -2592,11 +2600,9 @@ export const RENDERER_API_CONTRACT = Object.freeze({
     'storage',
     ['storage:inspect-data-root', LOCAL, STORAGE_PARENT]
   ),
-  'storage.migrate': callable<(parent: string) => Promise<MigrationOutcome>>()('storage', [
-    'storage:migrate',
-    LOCAL,
-    STORAGE_PARENT
-  ]),
+  'storage.migrate': callable<
+    (parent: string, selection?: DataRootSelection) => Promise<MigrationOutcome>
+  >()('storage', ['storage:migrate', LOCAL, STORAGE_PARENT]),
   'storage.onProgress': callable<(listener: AcpListener<MigrationProgress>) => RemoveListener>()(
     'storage',
     ['storage:migrate-progress', EVENT]
@@ -2610,7 +2616,11 @@ export const RENDERER_API_CONTRACT = Object.freeze({
     LOCAL
   ]),
   'storage.setDataRootAndRelaunch': callable<
-    (parent: string, markOnboarding?: boolean) => Promise<DataRootValidationResult>
+    (
+      parent: string,
+      markOnboarding?: boolean,
+      selection?: DataRootSelection
+    ) => Promise<DataRootValidationResult>
   >()('storage', ['storage:set-data-root-and-relaunch', LOCAL, STORAGE_ROOT]),
   'storage.validateDataRoot': callable<(parent: string) => Promise<DataRootValidationResult>>()(
     'storage',

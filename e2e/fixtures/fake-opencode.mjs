@@ -17,6 +17,7 @@ const SKILL_PERMISSION_PROMPT = 'Request fixture skill permission.'
 const MEMORY_RECALL_PROMPT = 'Verify automatic memory recall.'
 const MEMORY_RECALL_ENTRY = 'Keep every response concise and welcoming.'
 const PROVIDER_BRIDGE_PROMPT = 'Verify the provider bridge.'
+const PROVIDER_RUNTIME_FAILURE_PROMPT = 'Verify runtime provider failure synchronization.'
 const NOTEBOOK_LIFECYCLE_PROMPT = 'Verify the notebook lifecycle.'
 const PERFORMANCE_NOTEBOOK_LIFECYCLE_PROMPT = 'Profile the notebook lifecycle.'
 const NOTEBOOK_MUTATION_CANCELLATION_PROMPT = 'Verify Notebook mutation cancellation.'
@@ -407,6 +408,40 @@ const verifyProviderBridge = () => {
         `(base URL: ${route.options.baseURL}, credential: present).`
     )
   return 'Provider bridge verified through the Agent process.'
+}
+
+// Opt-in integration probe: use the real app-provided loopback transport instead of manufacturing
+// an ACP error. This exercises the app bridge's original-status observation before terminalizing.
+const rejectThroughProviderBridge = async () => {
+  const config = JSON.parse(process.env.OPENCODE_CONFIG_CONTENT ?? '{}')
+  const route = Object.values(config.provider ?? {}).find(
+    (provider) => provider?.models?.['runtime-health-model']
+  )
+  const credentialName = route?.options?.apiKey?.match(/^\{env:([^}]+)\}$/)?.[1]
+  const credential = credentialName ? process.env[credentialName] : undefined
+  if (!route?.options?.baseURL || !credential)
+    throw new Error('Runtime health fixture route missing.')
+  const url = new URL(route.options.baseURL)
+  if (url.hostname !== '127.0.0.1') throw new Error('Runtime health fixture requires loopback.')
+  const response = await fetch(`${route.options.baseURL.replace(/\/$/, '')}/chat/completions`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${credential}`, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: 'runtime-health-model',
+      messages: [{ role: 'user', content: 'synthetic runtime health probe' }]
+    })
+  })
+  await response.text()
+  if (
+    response.status !== 400 ||
+    !['401', '403'].includes(response.headers.get('x-open-science-upstream-status') ?? '')
+  ) {
+    throw new Error('Runtime health fixture did not receive the bridged upstream 401/403.')
+  }
+  throw acp.RequestError.internalError(
+    { errorKind: 'provider-error' },
+    'Synthetic upstream authentication rejected.'
+  )
 }
 
 const assertValidModelLimits = () => {
@@ -812,7 +847,7 @@ const createProvenanceArtifact = async (sessionId) => {
       'bash_execute',
       await client.callTool({
         name: 'bash_execute',
-        arguments: { command: "printf 'artifact-provenance-e2e\\n'" }
+        arguments: { command: "echo 'artifact-provenance-e2e'" }
       })
     )
     const state = toolResult(
@@ -1001,6 +1036,7 @@ if (process.argv.includes('--version')) {
       )
       const prompt = controlStart >= 0 ? rawPrompt.slice(controlStart) : rawPrompt
       await captureProviderPrompt(context.params.sessionId, prompt)
+      if (prompt.includes(PROVIDER_RUNTIME_FAILURE_PROMPT)) await rejectThroughProviderBridge()
 
       if (prompt.includes(DELEGATED_WAIT_MARKER)) {
         await captureDelegatedHandoff(
@@ -1051,9 +1087,148 @@ if (process.argv.includes('--version')) {
         return { stopReason: 'cancelled' }
       }
 
+      if (prompt.includes('Publish then wait for cancellation.')) {
+        const publication = await createProvenanceArtifact(context.params.sessionId)
+        await context.client.notify(acp.methods.client.session.update, {
+          sessionId: context.params.sessionId,
+          update: {
+            sessionUpdate: 'agent_message_chunk',
+            messageId: `e2e-message-${fixtureInstanceId}${nextMessageId++}`,
+            content: {
+              type: 'text',
+              text: `${publication}\nArtifact published; waiting for cancellation.`
+            }
+          }
+        })
+        await waitForSessionCancellation(context.params.sessionId)
+        return { stopReason: 'cancelled' }
+      }
+
       let reply = 'Deterministic reply: Summarize the deterministic fixture.'
       try {
-        if (prompt.includes(MERMAID_BLOCK_PROMPT)) {
+        if (prompt.includes('Verify interaction follow-up.')) {
+          reply = 'Interaction follow-up completed.'
+        } else if (prompt.includes('Request restart verification permission.')) {
+          const toolCall = {
+            toolCallId: 'restart-permission-tool',
+            title: 'mcp__skills__load_skill',
+            kind: 'read',
+            rawInput: { skill: 'fixture-skill' }
+          }
+          await context.client.notify(acp.methods.client.session.update, {
+            sessionId: context.params.sessionId,
+            update: { sessionUpdate: 'tool_call', ...toolCall, status: 'pending' }
+          })
+          const permission = await context.client.request(
+            acp.methods.client.session.requestPermission,
+            {
+              sessionId: context.params.sessionId,
+              toolCall,
+              options: [
+                { kind: 'allow_once', name: 'Allow once', optionId: 'allow-once' },
+                { kind: 'reject_once', name: 'Deny', optionId: 'deny-once' }
+              ]
+            }
+          )
+          reply =
+            permission.outcome.optionId === 'allow-once'
+              ? 'Restart verification: Permission approval delivered.'
+              : 'Restart verification: Permission denial delivered.'
+        } else if (prompt.includes('The user approved the pending tool permission')) {
+          reply = 'Restart verification: Permission approval delivered.'
+        } else if (prompt.includes('The user explicitly denied this operation.')) {
+          reply = 'Restart verification: Permission denial delivered.'
+        } else if (prompt.includes('The user approved the pending Session Plan.')) {
+          reply = 'Restart verification: Plan approval delivered.'
+        } else if (prompt.includes('The user rejected the pending Session Plan.')) {
+          reply = 'Restart verification: Plan dismissal delivered.'
+        } else if (
+          prompt.includes('The user provided review feedback for the pending Session Plan.')
+        ) {
+          reply = 'Restart verification: Plan feedback delivered.'
+        } else if (
+          prompt.includes('The user answered the pending question: Restart verification dataset?')
+        ) {
+          reply = 'Restart verification: Question answer delivered.'
+        } else if (prompt.includes('Create a restart verification Plan.')) {
+          const argumentsForPlan = {
+            task_summary: 'Restart verification Plan',
+            phases: [
+              {
+                name: 'Analysis',
+                delegations: [
+                  {
+                    name: 'Main',
+                    steps: [
+                      {
+                        title: 'Verify delivery',
+                        description: 'Produce one confirmation and verify its persistence.'
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            desired_outputs: ['Delivery confirmation'],
+            feasibility: { confidence: 'high', rationale: 'Deterministic local fixture.' }
+          }
+          const toolCallId = 'e2e-restart-plan-generation'
+          // Real providers publish the tool activity before the MCP call waits for approval.
+          // Keep that transcript witness so restart tests also exercise Plan history rendering.
+          await context.client.notify(acp.methods.client.session.update, {
+            sessionId: context.params.sessionId,
+            update: {
+              sessionUpdate: 'tool_call',
+              toolCallId,
+              title: 'open_science_plan_generate_plan',
+              kind: 'other',
+              status: 'in_progress',
+              rawInput: argumentsForPlan
+            }
+          })
+          const outcome = await Promise.race([
+            withMcpClient(context.params.sessionId, 'open-science-plan', async (client) =>
+              toolResult(
+                'generate_plan',
+                await client.callTool({ name: 'generate_plan', arguments: argumentsForPlan })
+              )
+            ).then(() => 'reviewed'),
+            waitForSessionCancellation(context.params.sessionId).then(() => 'cancelled')
+          ])
+          sessionCancellationResolvers.delete(context.params.sessionId)
+          if (outcome === 'cancelled') {
+            await context.client.notify(acp.methods.client.session.update, {
+              sessionId: context.params.sessionId,
+              update: { sessionUpdate: 'tool_call_update', toolCallId, status: 'failed' }
+            })
+            return { stopReason: 'cancelled' }
+          }
+          await context.client.notify(acp.methods.client.session.update, {
+            sessionId: context.params.sessionId,
+            update: { sessionUpdate: 'tool_call_update', toolCallId, status: 'completed' }
+          })
+          reply = 'Restart verification: Plan review returned.'
+        } else if (prompt.includes('Ask a restart verification question.')) {
+          await withMcpClient(context.params.sessionId, 'open-science-notebook', async (client) =>
+            toolResult(
+              'ask_user_question',
+              await client.callTool({
+                name: 'ask_user_question',
+                arguments: {
+                  questions: [
+                    {
+                      question: 'Restart verification dataset?',
+                      options: [{ label: 'Dataset Alpha' }, { label: 'Dataset Beta' }]
+                    }
+                  ]
+                }
+              })
+            )
+          )
+          reply = 'Restart verification: Waiting for the answer.'
+        } else if (prompt.includes('Discuss alternatives without approving main.')) {
+          reply = 'Deterministic reply: Discuss alternatives without approving main.'
+        } else if (prompt.includes(MERMAID_BLOCK_PROMPT)) {
           // A wide left-to-right flowchart: intrinsic width exceeds the conversation column, so
           // zooming must stay clipped by the block, and the source view must keep its frame.
           reply = [
@@ -1402,6 +1577,9 @@ if (process.argv.includes('--version')) {
         } else if (prompt.includes(NOTEBOOK_PACKAGE_CANCELLATION_PROMPT)) {
           reply = await verifyNotebookPackageCancellation(context.params.sessionId)
         } else if (prompt.includes(ARTIFACT_PROVENANCE_PROMPT)) {
+          if (prompt.includes('Observe the Task before publication.')) {
+            await new Promise((resolve) => setTimeout(resolve, 8_000))
+          }
           reply = await createProvenanceArtifact(context.params.sessionId)
         } else if (prompt.includes(PREVIEW_CONTEXT_MENU_ARTIFACTS_PROMPT)) {
           reply = await createPreviewContextMenuArtifacts(context.params.sessionId)

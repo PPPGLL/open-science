@@ -14,7 +14,7 @@ import {
 import { tmpdir } from 'node:os'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
-import { delimiter, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { _electron as electron, type ElectronApplication, type Page } from 'playwright'
 import {
   RuntimeResourceProfiler,
@@ -22,8 +22,15 @@ import {
   type RuntimeResourceProfilerOptions
 } from '../../scripts/performance/runtime-resource-profiler'
 import { terminateProcessTree } from '../../src/main/process-tree'
+import {
+  readProcessTable,
+  readProcessTree,
+  selectProcessTree
+} from '../../scripts/performance/process-snapshot'
 import { createProjectDbClient } from '../../src/main/projects/prisma-client'
 import { RendererFailureGate } from './renderer-failure-gate'
+import { prepareBrandStorageFixture } from './brand-storage-data'
+import { captureNativeQuitDialog } from './native-quit-dialog'
 import type { PackageOperationSnapshot } from '../../src/shared/session-package'
 
 const APP_ROOT = resolve(process.cwd())
@@ -58,6 +65,13 @@ const electronLaunchTarget = (
     args: [
       `--user-data-dir=${userDataRoot}`,
       ...(platform === 'linux' ? ['--password-store=basic'] : []),
+      ...(platform === 'darwin' && !executablePath
+        ? [
+            '--use-mock-keychain',
+            '--require',
+            resolve(APP_ROOT, 'e2e/fixtures/mock-credential-identity.cjs')
+          ]
+        : []),
       ...(executablePath ? [] : [APP_ROOT])
     ],
     ...(executablePath ? { executablePath } : {})
@@ -281,7 +295,18 @@ const closeElectronApplicationForCleanup = async (
   }
 }
 
+type BrandState = {
+  name: string
+  packaged: boolean
+  profile: string
+  logs: string
+  title: string
+  menus: string[]
+}
 type ElectronApp = {
+  captureBrandState: () => Promise<BrandState>
+  restartWithBrandFixture: (mode: 'legacy' | 'custom' | 'onboarding') => Promise<Page>
+
   readonly page: Page
   openAdditionalRenderer: () => Promise<Page>
   authenticatedWebUrl: () => Promise<string>
@@ -324,6 +349,7 @@ type ElectronApp = {
   recordResourceTiming: (name: string, durationMs: number) => void
   captureResourceTimings: (prefix?: string) => Promise<void>
   sampleResourceProfileNow: () => Promise<void>
+  setMainWindowSize: (width: number, height: number) => Promise<void>
   setMainWindowZoomFactor: (factor: number) => Promise<void>
   finishResourceProfile: () => Promise<RuntimeProfileResult>
 }
@@ -342,18 +368,23 @@ const launchEnvironment = (
     if (value !== undefined && key !== 'ELECTRON_RENDERER_URL') environment[key] = value
   }
 
+  environment.OPEN_SCIENCE_CONFIG_ROOT = storageRoot
+  environment.OPEN_SCIENCE_USER_DATA = join(dirname(storageRoot), 'electron-profile')
   environment.OPEN_SCIENCE_STORAGE_ROOT = storageRoot
   environment.OPEN_SCIENCE_E2E_STORAGE_ROOT = storageRoot
   environment.OPEN_SCIENCE_E2E_HANDOFF_CAPTURE_ROOT = join(storageRoot, 'e2e-handoff-captures')
   environment.OPEN_SCIENCE_E2E_WINDOW_MODE = windowMode
   if (process.platform === 'win32' && environment.OPEN_SCIENCE_E2E_MICROMAMBA_EVENTS) {
     // The production runner caches resolved tools under LocalAppData. Keep the controlled process
-    // fixture isolated from any micromamba selected by an ordinary Open Science session.
+    // fixture isolated from any micromamba selected by an ordinary Open-Science session.
     environment.LOCALAPPDATA = join(storageRoot, 'local-app-data')
   }
   if (sessionPerformanceTrace) environment.OPEN_SCIENCE_PERF_SESSION_TRACE = '1'
   if (fakeRemoteItRoot) {
-    environment.OPEN_SCIENCE_FAKE_REMOTEIT_STATE = join(storageRoot, 'fake-remoteit-state.json')
+    environment.OPEN_SCIENCE_FAKE_REMOTEIT_STATE = join(
+      dirname(storageRoot),
+      'fake-remoteit-state.json'
+    )
     environment.OPEN_SCIENCE_REMOTEIT_BIN = process.execPath
   }
   if (fakeAgentBinRoot) {
@@ -382,14 +413,18 @@ const launchOpenScience = async (
     ...electronLaunchTarget(userDataRoot),
     args: [...electronLaunchTarget(userDataRoot).args, ...(packagePath ? [packagePath] : [])],
     cwd: fakeRemoteItEnabled ? fakeRemoteItRoot : APP_ROOT,
-    env: launchEnvironment(
-      storageRoot,
-      fakeAgentEnabled ? fakeAgentBinRoot : undefined,
-      process.env,
-      fakeRemoteItEnabled ? fakeRemoteItRoot : undefined,
-      windowMode,
-      sessionPerformanceTrace
-    )
+    env: {
+      ...launchEnvironment(
+        storageRoot,
+        fakeAgentEnabled ? fakeAgentBinRoot : undefined,
+        process.env,
+        fakeRemoteItEnabled ? fakeRemoteItRoot : undefined,
+        windowMode,
+        sessionPerformanceTrace
+      ),
+      OPEN_SCIENCE_CONFIG_ROOT: storageRoot,
+      OPEN_SCIENCE_USER_DATA: userDataRoot
+    }
   })
 
   if (process.platform === 'linux') {
@@ -554,7 +589,7 @@ class ElectronAppHarness implements ElectronApp {
       {
         fakeAgentBinRoot: join(testRoot, 'fake-agent-bin'),
         fakeRemoteItRoot: join(testRoot, 'fake-remoteit'),
-        fakeRemoteItState: join(testRoot, 'storage', 'fake-remoteit-state.json'),
+        fakeRemoteItState: join(testRoot, 'fake-remoteit-state.json'),
         storageRoot: join(testRoot, 'storage'),
         userDataRoot: join(testRoot, 'electron-profile')
       },
@@ -642,92 +677,7 @@ class ElectronAppHarness implements ElectronApp {
     includesRendererCatalog: boolean
     message: string
   } | null> {
-    return this.runningApplication.evaluate(async ({ app, dialog }) => {
-      const { readFileSync, readdirSync } = process.getBuiltinModule('node:fs')
-      const { createRequire } = process.getBuiltinModule('node:module')
-      const { join } = process.getBuiltinModule('node:path')
-      const appRoot = app.getAppPath()
-      const mainRoot = join(appRoot, 'out', 'main')
-      const chunk = (prefix: string): string => {
-        const name = readdirSync(mainRoot).find(
-          (candidate) => candidate.startsWith(`${prefix}-`) && candidate.endsWith('.js')
-        )
-        if (!name) throw new Error(`Built Electron chunk ${prefix} was not found.`)
-        return join(mainRoot, name)
-      }
-      const requireFromApp = createRequire(join(appRoot, 'package.json'))
-      const nativeChunk = chunk('main-process-messages')
-      const nativeSource = readFileSync(nativeChunk, 'utf8')
-      const ownerModule = requireFromApp(chunk('owner')) as {
-        LocalePreferenceOwner: new (
-          systemLanguageTags: readonly string[],
-          repository: { setLocalePreference: (locale: string) => Promise<void> },
-          initialPreference: string
-        ) => {
-          t: (key: string, options?: Record<string, string | number>) => string
-        }
-      }
-      const close = requireFromApp(chunk('window-close-confirm')) as {
-        createElectronCloseConfirm: (
-          getWindow: () => undefined,
-          preferences: {
-            get: () => Promise<undefined>
-            set: () => Promise<void>
-          },
-          translate: (key: string, options?: Record<string, string | number>) => string
-        ) => (
-          variant: 'quit',
-          sessions: Array<{ projectId: string; sessionId: string; kind: 'agent' }>
-        ) => Promise<string>
-      }
-      const storageRoot = process.env.OPEN_SCIENCE_STORAGE_ROOT
-      if (!storageRoot) throw new Error('Electron E2E storage root is unavailable.')
-      const settings = JSON.parse(readFileSync(join(storageRoot, 'settings.json'), 'utf8')) as {
-        localePreference?: string
-      }
-      if (!settings.localePreference || settings.localePreference === 'system') {
-        return null
-      }
-      const localeOwner = new ownerModule.LocalePreferenceOwner(
-        ['en-US'],
-        { setLocalePreference: async () => undefined },
-        settings.localePreference
-      )
-      let captured: { buttons?: string[]; detail?: string; message?: string } | undefined
-      const descriptor = Object.getOwnPropertyDescriptor(dialog, 'showMessageBox')
-      Object.defineProperty(dialog, 'showMessageBox', {
-        configurable: true,
-        value: async (...args: unknown[]) => {
-          captured = args.at(-1) as typeof captured
-          return { checkboxChecked: false, response: 0 }
-        }
-      })
-
-      try {
-        const confirm = close.createElectronCloseConfirm(
-          () => undefined,
-          { get: async () => undefined, set: async () => undefined },
-          (key, options) => localeOwner.t(key, options)
-        )
-        await confirm('quit', [{ projectId: 'e2e', sessionId: 'e2e', kind: 'agent' }])
-      } finally {
-        if (descriptor) Object.defineProperty(dialog, 'showMessageBox', descriptor)
-        else Reflect.deleteProperty(dialog, 'showMessageBox')
-      }
-
-      if (!captured?.buttons || !captured.detail || !captured.message) {
-        throw new Error('Native quit dialog options were not captured.')
-      }
-      return {
-        buttons: captured.buttons,
-        detail: captured.detail,
-        includesRendererCatalog: [
-          'Настройки',
-          'This directory does not exist or is not a directory'
-        ].some((sentinel) => nativeSource.includes(sentinel)),
-        message: captured.message
-      }
-    })
+    return this.runningApplication.evaluate(captureNativeQuitDialog)
   }
 
   async markResourceProfilePhase(phase: string): Promise<void> {
@@ -1022,7 +972,7 @@ class ElectronAppHarness implements ElectronApp {
   async mainWindowState(): Promise<{ minimized: boolean; visible: boolean }> {
     return this.runningApplication.evaluate(({ BrowserWindow }) => {
       const mainWindow = BrowserWindow.getAllWindows()[0]
-      if (!mainWindow) throw new Error('Open Science main window was not found.')
+      if (!mainWindow) throw new Error('Open-Science main window was not found.')
 
       return { minimized: mainWindow.isMinimized(), visible: mainWindow.isVisible() }
     })
@@ -1031,16 +981,25 @@ class ElectronAppHarness implements ElectronApp {
   async showMainWindow(): Promise<void> {
     await this.runningApplication.evaluate(({ BrowserWindow }) => {
       const mainWindow = BrowserWindow.getAllWindows()[0]
-      if (!mainWindow) throw new Error('Open Science main window was not found.')
+      if (!mainWindow) throw new Error('Open-Science main window was not found.')
       mainWindow.show()
     })
     await expect.poll(() => this.mainWindowState()).toMatchObject({ visible: true })
   }
 
+  async setMainWindowSize(width: number, height: number): Promise<void> {
+    await this.runningApplication.evaluate(
+      ({ BrowserWindow }, { width, height }) => {
+        BrowserWindow.getAllWindows()[0].setSize(width, height)
+      },
+      { width, height }
+    )
+  }
+
   async setMainWindowZoomFactor(factor: number): Promise<void> {
     await this.runningApplication.evaluate(({ BrowserWindow }, nextFactor) => {
       const mainWindow = BrowserWindow.getAllWindows()[0]
-      if (!mainWindow) throw new Error('Open Science main window was not found.')
+      if (!mainWindow) throw new Error('Open-Science main window was not found.')
       mainWindow.webContents.setZoomFactor(nextFactor)
     }, factor)
   }
@@ -1082,7 +1041,7 @@ class ElectronAppHarness implements ElectronApp {
     await this.runningApplication.evaluate(
       ({ BrowserWindow }, input) => {
         const mainWindow = BrowserWindow.getAllWindows()[0]
-        if (!mainWindow) throw new Error('Open Science main window was not found.')
+        if (!mainWindow) throw new Error('Open-Science main window was not found.')
 
         mainWindow.webContents.focus()
         mainWindow.webContents.sendInputEvent({
@@ -1103,7 +1062,7 @@ class ElectronAppHarness implements ElectronApp {
   async requestMainWindowClose(): Promise<void> {
     await this.runningApplication.evaluate(({ BrowserWindow }) => {
       const mainWindow = BrowserWindow.getAllWindows()[0]
-      if (!mainWindow) throw new Error('Open Science main window was not found.')
+      if (!mainWindow) throw new Error('Open-Science main window was not found.')
       mainWindow.close()
     })
   }
@@ -1111,7 +1070,7 @@ class ElectronAppHarness implements ElectronApp {
   async emitPreviewContextMenuAtCssPoint(point: { x: number; y: number }): Promise<void> {
     await this.runningApplication.evaluate(({ BrowserWindow }, cssPoint) => {
       const mainWindow = BrowserWindow.getAllWindows()[0]
-      if (!mainWindow) throw new Error('Open Science main window was not found.')
+      if (!mainWindow) throw new Error('Open-Science main window was not found.')
       const { webContents } = mainWindow
       const frame = webContents.mainFrame.framesInSubtree.find(
         (candidate) =>
@@ -1190,6 +1149,29 @@ class ElectronAppHarness implements ElectronApp {
     this.sabotagedDelegatedHandoffs.delete(childName)
   }
 
+  async captureBrandState(): Promise<BrandState> {
+    return this.runningApplication.evaluate(({ app, BrowserWindow, Menu }) => ({
+      name: app.getName(),
+      packaged: app.isPackaged,
+      profile: app.getPath('userData'),
+      logs: app.getPath('logs'),
+      title: BrowserWindow.getAllWindows()[0]?.getTitle() ?? '',
+      menus: Menu.getApplicationMenu()?.items.map((item) => item.label) ?? []
+    }))
+  }
+
+  async restartWithBrandFixture(mode: 'legacy' | 'custom' | 'onboarding'): Promise<Page> {
+    await this.close()
+    await prepareBrandStorageFixture(
+      this.roots.storageRoot,
+      this.testRoot,
+      mode,
+      Boolean(process.env.OPEN_SCIENCE_E2E_EXECUTABLE)
+    )
+    await this.launch()
+    return this.page
+  }
+
   async restart(options: { resourceProfilePhase?: string } = {}): Promise<Page> {
     await this.close()
     if (options.resourceProfilePhase) {
@@ -1206,8 +1188,32 @@ class ElectronAppHarness implements ElectronApp {
   async restartAfterCrash(): Promise<Page> {
     const application = this.application
     if (!application) throw new Error('No Electron process is available to terminate.')
-    const result = await terminateProcessTree(application.process())
-    if (!result.reaped) throw new Error('Electron crash simulation did not reap the process tree.')
+    const child = application.process()
+    const before =
+      process.platform === 'win32' && child.pid !== undefined
+        ? await readProcessTree(child.pid)
+        : undefined
+    const result = await terminateProcessTree(child)
+    let reaped = result.reaped
+    // Windows termination is asynchronous even when taskkill succeeds. Playwright's child is
+    // a shell, so wait for the observed Electron descendants too before reusing the profile lock.
+    if (process.platform === 'win32') {
+      reaped = false
+      if (before?.complete) {
+        const deadline = Date.now() + 10_000
+        do {
+          const after = await readProcessTable()
+          reaped =
+            after.complete &&
+            before.processes.every(
+              ({ pid }) => selectProcessTree(after.processes, pid).length === 0
+            )
+          if (reaped || Date.now() >= deadline) break
+          await new Promise((resolve) => setTimeout(resolve, 100))
+        } while (Date.now() < deadline)
+      }
+    }
+    if (!reaped) throw new Error('Electron crash simulation did not reap the process tree.')
     this.resourceProfiler?.detach(application)
     this.application = undefined
     this.currentPage = undefined

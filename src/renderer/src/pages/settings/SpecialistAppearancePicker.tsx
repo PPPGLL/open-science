@@ -1,5 +1,5 @@
 import { Notice } from '@/components/notice'
-/* Hallmark · component: Specialist appearance picker · genre: modern-minimal · theme: Open Science Settings
+/* Hallmark · component: Specialist appearance picker · genre: modern-minimal · theme: Open-Science Settings
  * states: default · hover · focus · active · disabled · loading · error · success
  * contrast: uses the project semantic foreground, muted, ring, destructive, and success tokens
  * pre-emit critique: P5 H4 E5 S5 R5 V5
@@ -275,6 +275,7 @@ const SpecialistAppearancePicker = ({
               </>
             ) : saveState === 'error' ? (
               <Notice
+                inline
                 level="error"
                 className="w-full"
                 description={t('Appearance wasn’t saved. Try again.')}

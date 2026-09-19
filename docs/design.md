@@ -1,6 +1,6 @@
-# Open Science shadcn/ui Design Specification
+# Open-Science shadcn/ui Design Specification
 
-This specification defines the Open Science workspace design system. The design system is based on shadcn/ui, Radix primitives, Tailwind CSS variables, and semantic tokens. Use shadcn semantic tokens (`bg-background`, `text-foreground`, `bg-card`, and so on) by default. Use workspace tokens (`bg-bg-10`, `text-text-000`, and so on) only for the named surfaces listed in **Workspace Tokens** and the component guidelines below. The canonical token values live in `src/renderer/src/assets/main.css`.
+This specification defines the Open-Science workspace design system. The design system is based on shadcn/ui, Radix primitives, Tailwind CSS variables, and semantic tokens. Use shadcn semantic tokens (`bg-background`, `text-foreground`, `bg-card`, and so on) by default. Use workspace tokens (`bg-bg-10`, `text-text-000`, and so on) only for the named surfaces listed in **Workspace Tokens** and the component guidelines below. The canonical token values live in `src/renderer/src/assets/main.css`.
 
 This document records reusable UI/UX rules only. It must not include sample project names, sample tasks, dataset names, organization IDs, personal email addresses, concrete model product names, or third-party brand copy.
 
@@ -33,7 +33,7 @@ This document records reusable UI/UX rules only. It must not include sample proj
 ```
 
 - Use `cssVariables: true`; expose all colors, radii, rings, and sidebar colors through CSS variables.
-- Use `neutral` as the `baseColor`; the Open Science deep green should only appear through semantic tokens such as `--primary` and `--ring`.
+- Use `neutral` as the `baseColor`; the Open-Science deep green should only appear through semantic tokens such as `--primary` and `--ring`.
 - Use the `.dark` class to override shadcn tokens in dark mode. Components must use tokens from this specification only; do not invent new color variable names outside the shadcn and workspace token sets defined here.
 - Prefer shadcn components for new UI: `Button`, `Dialog`, `DropdownMenu`, `Select`, `Tabs`, `Sidebar`, `Input`, `Textarea`, `Card`, `Separator`, `ScrollArea`, and `Tooltip`.
 
@@ -399,7 +399,7 @@ Active-dialog menus and other foreground child layers retain their own ordering.
 - Dialog open: `data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95`.
 - Dialog close: `data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95`.
 - Overlay: `fade-in-0 / fade-out-0`; the light scrim is `rgb(0 0 0 / 0.5)`.
-- Transform motion is limited to dialogs, sheets, collapsible content, and subtle button feedback, and must respect `motion-reduce`.
+- Transform motion is limited to dialogs, sheets, collapsible content, subtle button feedback, and the tab selection indicators described below, and must respect `motion-reduce`.
 - Brand loading indicators may use fixed-geometry transform and opacity motion for orbiting or gathering particles; they must become static under `prefers-reduced-motion`, and the full-canvas startup logo is capped at 30 drawn frames per second.
 
 ## Component Guidelines
@@ -481,7 +481,9 @@ Active-dialog menus and other foreground child layers retain their own ordering.
 
 - `components/ui/notice-chrome.ts` owns the visual classes shared by ActionToast, NotificationLiveToast and compact ErrorNotice: 16px card radius, semantic border/card surface, 16px padding, 14px text, and consistent 32px-minimum actions and dismiss controls.
 - Titles use 14px semibold; explanatory copy uses 14px with 24px line height. Notification metadata, detail previews and auxiliary labels may remain 12px for density.
-- `components/notice.tsx` is the shared message renderer for embedded guidance and floating recovery cards. Use the same 16px radius, card background, border, padding, typography and actions in either position. `ErrorNotice` and `InlineNotice` preserve existing caller APIs and delegate to this renderer; there is no separate muted inset style. Complex forms that compose `inlineNoticeClassName` reuse the same surface tokens. Keep related reasons in one notice.
+- `components/notice.tsx` is the shared message renderer. Contextual guidance and operation feedback inside an existing row, form, dialog or panel use `inline`: no nested border, background or card padding; 14px text with 20px line height, an 8px icon gap and first-line icon alignment. `InlineNotice` selects this presentation automatically; `Notice` and `ErrorNotice` accept it explicitly when controls or diagnostics are needed. Complex forms composing `inlineNoticeClassName` use the same unboxed typography and own their layout. Keep related reasons in one notice.
+- Keep the 16px bordered card for floating recovery and region-level failures that replace content or need a distinct recovery group. Startup blockers retain the full-page layout. Do not choose a card solely because the semantic level is error. Input validation stays beside its input.
+- Inline notices stretch within their available content area without combining a forced full width with external horizontal margins. Flex text columns must grow where they own the remaining row width. Icons stay beside the first text line at narrow widths; long diagnostics wrap without hiding text. Actions may move below the summary. Cards with horizontal margins must use automatic width or a padded parent.
 - Semantic `level` values are `info`, `warning` and `error`: info uses an information icon with status-info color, warning a triangle with status-warning color, and error a circle alert with status-failure color. Keep body text neutral for readability; level does not create business state or choose a live-region role. Existing teal/amber/red caller props map to these presentation levels.
 - Titles, description/content, actions and diagnostics are optional sections of the same component. Compact errors and Notebook provisioning failures compose ErrorNotice; narrow cards place trailing actions below the summary. Technical errors remain scrollable and fully selectable, with existing recovery callbacks.
 - Warning text, badges and confirmation icons use the status-warning token family in both themes. Unrelated amber chart series and favorite stars retain their own palette.
@@ -491,6 +493,8 @@ Active-dialog menus and other foreground child layers retain their own ordering.
 
 ### Dialog / AlertDialog
 
+- Choose one main scroll owner per dialog. Simple forms may scroll the whole panel. A structured dialog with fixed header/footer uses a constrained flex column, a `min-h-0` scrolling body, and non-shrinking header/footer; body viewport caps must still shrink within the remaining panel height. Keep intentionally bounded lists and text inputs independently scrollable.
+- Scroll viewports containing absolutely positioned descendants (including `sr-only` file inputs) must establish their own containing block with `relative`. Otherwise those descendants can extend an ancestor's scroll range and produce a second scrollbar. Verify actual overflow and access to the final content; hiding the outer scrollbar alone is insufficient.
 - Use `Dialog` for regular form dialogs.
 - Use `AlertDialog` for destructive confirmations, except the dedicated Skill and Connector batch management review described below. Those secondary pages use an explicitly non-modal review in their bottom action dock; ordinary per-resource deletion remains an `AlertDialog`.
 - Medium `DialogContent`: `sm:max-w-[576px] max-h-[85svh] overscroll-contain rounded-xl border bg-background p-0 shadow-lg`; target size is approximately `576px x 612px`.
@@ -526,6 +530,7 @@ Active-dialog menus and other foreground child layers retain their own ordering.
 
 ### Tabs / ToggleGroup
 
+- Model settings and Specialist capability tabs move only the selected underline or background between tabs over 220ms with a non-overshooting ease-out. Keep each list's motion independent and relative to the list inside scrolled dialogs. Labels, hit targets, hover colors, content lifecycle, and Radix keyboard activation stay unchanged; reduced motion selects immediately with no slide.
 - Use `Tabs` for files, views, and viewer top bars.
 - Active tab: `h-8 rounded-md bg-accent px-3 py-1.5 text-sm text-accent-foreground`.
 - Inactive tab: `h-8 rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground`.
@@ -558,6 +563,23 @@ Active-dialog menus and other foreground child layers retain their own ordering.
 
 - Desktop Session previews wait 300ms on the first hover, then switch immediately within a browsing burst. Allow 300ms to cross into the card and reset the first-hover delay 300ms after closing. Load details only when the preview opens through the existing branch-aware owner.
 - Interactive Session previews use non-modal Popover, with explicit ArrowRight entry from the row to rename, Escape dismissal, and focus restoration. Tab retains natural row/action traversal. Finishing a keyboard rename returns focus to its title control; deliberate blur navigation keeps its chosen focus. Editing and pending saves protect the active Session against hover replacement; Enter/blur commits and Escape cancels through the existing rename flow.
+
+### Session information
+
+The upper-right pin toggles the current Session through the shared Session controller, moving it into or out of the sidebar’s pinned section. Its pressed state follows the Session store; it stays disabled until Session persistence is ready.
+
+- The conversation header's Session number and title open a click- and keyboard-accessible,
+  non-modal information Popover. Limit the header trigger to 320px (or the available width),
+  truncate its title on one line, and expose the full title on hover. Show the current Session number at the right of the card title,
+  keeping the number fully visible. Keep the title on one line with ellipsis and the description
+  to at most two lines. Use the shared semantic surface, rounded-xl and shadow-menu, with a
+  viewport-bounded width of 360px.
+- Order the card as title/description, optional source Session, created/updated local timestamps,
+  current-branch message count with Assistant subtotal, unique Session Artifact count, then Edit
+  session. Counts exclude hidden control messages; loading values are unavailable, never false zeros.
+- Reuse the existing Session editor and its save/conflict handling. Opening it dismisses the card;
+  closing it restores focus to the persistent header trigger. Source navigation uses the existing
+  navigation owner; unavailable sources retain their recorded identity without a misleading link.
 
 ### Message Center
 
@@ -794,7 +816,7 @@ Active-dialog menus and other foreground child layers retain their own ordering.
 - Header: `flex items-center justify-between`.
 - Language and theme preferences live in Settings > General > Appearance; omit their shortcuts
   from the Home header. The Settings gear opens Settings directly.
-- Brand title: display `Open Science`, `text-[26px] leading-none font-medium`.
+- Brand title: display `Open-Science`, `text-[26px] leading-none font-medium`.
 - Global search: expose a `Search` ghost icon action in the header; it opens the same shared dialog as
   `Cmd/Ctrl+K` and does not maintain a second search state.
 - Global search opens directly on the result groups without a recent-query chip row. Search queries are not recorded in browser storage; existing recent-query data is left unused.
@@ -928,7 +950,7 @@ Active-dialog menus and other foreground child layers retain their own ordering.
 - Editor fields needed for the primary task stay visible. Optional or uncommon fields live under a borderless **Advanced settings** disclosure with `aria-expanded` / `aria-controls`; it is collapsed by default and opens initially when imported credentials must be entered or existing advanced values would otherwise be hidden. Do not wrap the disclosure in a card.
 - Form textareas use the shared `Textarea`; binary settings use the shared `Switch`.
 - Memory note and category drafts retain the object identity and revision captured when editing begins. External snapshots show a read-only **Latest saved version** alongside the unchanged draft. A conflicting save preserves the draft and reports the existing conflict error; Cancel and reopening the editor starts from the latest saved values. No automatic merging or overwriting is offered.
-- Network > Proxy is a breadcrumb-backed second-level form. It offers System (the historical default), Manual, and Direct modes; Manual uses a labeled proxy URL, optional bypass rules, blur/save validation, and explicit rejection of embedded credentials. System keeps per-request OS/PAC resolution inside Electron while new agent processes inherit only the proxy environment present when Open Science started; Manual supplies a fixed proxy to both stacks, and Direct clears proxy variables. Saving reports inline loading, error, or quiet success and explains that only new requests and processes adopt the change; live agents, notebook kernels, and installers are not restarted.
+- Network > Proxy is a breadcrumb-backed second-level form. It offers System (the historical default), Manual, and Direct modes; Manual uses a labeled proxy URL, optional bypass rules, blur/save validation, and explicit rejection of embedded credentials. System keeps per-request OS/PAC resolution inside Electron while new agent processes inherit only the proxy environment present when Open-Science started; Manual supplies a fixed proxy to both stacks, and Direct clears proxy variables. Saving reports inline loading, error, or quiet success and explains that only new requests and processes adopt the change; live agents, notebook kernels, and installers are not restarted.
 - Select fields use `Select`, with a `32px` trigger height.
 - A visible Settings search or filter field owns the platform search shortcut: `Cmd+K` on macOS and `Ctrl+K` on Windows/Linux focus it without selecting or clearing its value. The topmost nested Settings dialog wins over a search behind it; hidden or disabled searches do not intercept the shortcut. Persistent list-toolbars show the shortcut as right-aligned keycaps inside the field, while transient searches such as runtime-package and Specialist capability filters expose the same behavior through `aria-keyshortcuts` without repeating the visual hint.
 
@@ -1033,7 +1055,7 @@ Active-dialog menus and other foreground child layers retain their own ordering.
 #### Skills panel
 
 - Panel navigation is breadcrumb-driven: the list, manage, detail, create, edit, import, and upload screens are second-level pages reached through the settings header's back / forward history and maximize control, not separate dialogs.
-- The Imported group header keeps a neutral **Import** dropdown visible even when the group is empty or collapsed. It duplicates the existing upload, GitHub, and installed-folder actions from **Add skill** so both entry points remain available and share the same menu items and platform availability rules. The group description is source-neutral: **Skills you imported into Open Science.**
+- The Imported group header keeps a neutral **Import** dropdown visible even when the group is empty or collapsed. It duplicates the existing upload, GitHub, and installed-folder actions from **Add skill** so both entry points remain available and share the same menu items and platform availability rules. The group description is source-neutral: **Skills you imported into Open-Science.**
 - Directly copied Personal and Imported packages at `<configRoot>/skills/<source>/<name>/SKILL.md` use the same central catalog as Settings and every agent framework, where `<source>` is `personal` or `imported` and `<name>` is 1–64 lowercase letters or numbers separated by single hyphens. The shared agent system prompt supplies both absolute source paths: it may author a user-requested package in Personal, while Imported is informational and GitHub, attachment, search, preview, or confirmation sources remain on the application-owned import flow.
 - `storageRoot` is the historical code name for this fixed, non-relocatable `configRoot`; it is not the user-selectable `dataRoot`. Personal and Imported source packages, Settings, and the app-owned agent profiles live below `configRoot`. `dataRoot` holds relocatable artifacts, notebooks, and rebuildable compute/runtime assets and does not participate in user-Skill discovery.
 - Personal and Imported directories are the writable source of truth. The app scans those two sources into one central catalog; agent frameworks do not independently scan them in place. The user-Skill catalog observer watches `<configRoot>/skills`, coalesces bursts to at most one running and one pending reconciliation, and falls back to reconciliation every 30 seconds when recursive watching is unavailable. A catalog fingerprint change refreshes Settings and retires the current agent runtime generation. An active turn finishes against its existing generation, while every later turn resumes through a freshly provisioned generation.
@@ -1061,7 +1083,7 @@ Active-dialog menus and other foreground child layers retain their own ordering.
 - Upload is a full-page dropzone (`Drag and drop or click to upload`) accepting a `.md` file or a `.zip` / `.skill` bundle, with a centered "Write from scratch instead" fallback. A dropped file is **parsed first, not imported**: on success it advances to a "Confirm import" page (parsed name, description, and — for a bundle — the file list), with a neutral **Import** button and a **Choose a different file** escape. Nothing is written until Import is confirmed.
 - Duplicate detection on the confirm page uses two signals: an **exact re-upload** (the bundle's sha256 content signature already matches an import) and a **same-name skill** already in the catalog (any source; also covers `.md` uploads). Either one shows an "Already uploaded" pill on the name and an `Info`-icon reminder below the button row (`text-xs text-muted-foreground`) — "…already imported — re-importing is a no-op." for an exact match, or `A skill named "X" already exists.` for a name match. The reminder never blocks import.
 - When a file fails to parse into a valid Skill, show a shared inline `ErrorNotice` directly under the dropzone. Keep the selection and retry/reselect actions available; use the neutral surface and semantic warning icon.
-- Export is the first item in a non-built-in Skill's row action menu and immediately opens the native Save As dialog. Only one Skill export may run at a time; every row action menu stays disabled until that Save As operation settles. The portable ZIP contains the Skill's `SKILL.md` and ordinary supporting files, excludes Open Science provenance/ownership metadata, and can be uploaded again through the standard Skill import flow. Cancellation is silent, a successful save shows a short status, and failures use the shared inline `ErrorNotice`.
+- Export is the first item in a non-built-in Skill's row action menu and immediately opens the native Save As dialog. Only one Skill export may run at a time; every row action menu stays disabled until that Save As operation settles. The portable ZIP contains the Skill's `SKILL.md` and ordinary supporting files, excludes Open-Science provenance/ownership metadata, and can be uploaded again through the standard Skill import flow. Cancellation is silent, a successful save shows a short status, and failures use the shared inline `ErrorNotice`.
 - Stray file drops are neutralized app-wide: the renderer entry prevents the default `dragover` / `drop` so a file released outside a dropzone can never navigate the window to `file://…`.
 
 #### Connectors panel
@@ -1075,6 +1097,13 @@ Active-dialog menus and other foreground child layers retain their own ordering.
   that scope in the approval card body before the user approves. Keep the provider response
   one-shot so application-owned revocation remains effective. This capability does not grant
   shell execution, web search, or arbitrary MCP access, and does not change Auto editing.
+- Native text web search in Claude Code offers **Once** and **This conversation**, separately from
+  web reading. The card explains that conversation approval covers searches by this conversation
+  and its subagents. Verified pending searches and later searches reuse that approval, while every
+  provider receives its own one-shot response. Search grants use `builtin:web_search`, remain
+  revocable through existing permissions, and never expand existing `builtin:web_fetch` grants.
+  OpenCode's generic `other` search events and Codex Responses/Bridge lack this native identity
+  contract and retain their existing permission behavior. Search is not a default global grant.
 - Remembered permission rows identify Connector tools by the current Connector display name,
   public server ID, and exact tool name. The name opens the existing Connector Settings route in
   active, policy-covered, and blocked states. Revoke accessible names also include the scope.
@@ -1195,9 +1224,9 @@ alert region excludes the diagnostic payload so opening it does not announce the
 
 ## Language Guidelines
 
-- Product naming is consistently `Open Science` in visible app surfaces such as window titles, sidebars, app menus, about information, and help entry points.
+- Product naming is consistently `Open-Science` in visible app surfaces such as window titles, sidebars, app menus, about information, and help entry points.
 - Do not include sample project names, sample research topics, dataset names, personal email addresses, organization IDs, or concrete model product names in reusable UI specifications or base components.
-- Support and diagnostics copy should use generic wording, such as "Contact Open Science support", "Download diagnostic logs", and "Share diagnostic ID".
+- Support and diagnostics copy should use generic wording, such as "Contact Open-Science support", "Download diagnostic logs", and "Share diagnostic ID".
 - Settings for model, font, licensing, theme, and related preferences should use functional names and should not bind explanatory copy to a specific vendor brand.
 - Reasoning or response explanations should use neutral wording, such as "the time the system spends preparing a response", and should avoid personified or brand-specific language.
 - Technical terms such as shadcn, Radix, Tailwind, token, class, hover, focus, and active may remain in English. User-facing interface copy should use a consistent language style within the same page.

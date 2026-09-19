@@ -254,7 +254,7 @@ const SpecialistEditor = ({
       <div className="max-w-2xl">
         {/* Save error — shown at the top so it is immediately visible */}
         {saveError ? (
-          <ErrorNotice role="alert" tone="amber" className="mb-4" description={saveError} />
+          <ErrorNotice inline role="alert" tone="amber" className="mb-4" description={saveError} />
         ) : null}
 
         {/* Saved identity bar — stable reference of what's currently persisted (edit only).
@@ -290,7 +290,7 @@ const SpecialistEditor = ({
               {editSpecialist.setupPending ? (
                 <p className="mt-2 text-xs text-muted-foreground">
                   {t(
-                    'This imported Specialist is saved but disabled. Save changes to complete setup and enable it.'
+                    'This imported Specialist is saved but disabled. Save changes to enable it, or configure it later.'
                   )}
                 </p>
               ) : null}
@@ -666,7 +666,7 @@ const SpecialistEditor = ({
             }}
             disabled={isSaving}
           >
-            {t('Cancel')}
+            {editSpecialist?.setupPending ? t('Configure later') : t('Cancel')}
           </Button>
           <Button
             type="button"

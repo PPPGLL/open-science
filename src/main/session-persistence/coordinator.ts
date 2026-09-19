@@ -117,7 +117,8 @@ type SessionMutationRepository = {
   }>
   loadSessionWithDiagnostics(
     projectId: string,
-    sessionId: string
+    sessionId: string,
+    options?: { mode?: 'repair' | 'read-only'; preserveRuntimeState?: boolean }
   ): Promise<
     | { status: 'found'; session: PersistedChatSession }
     | { status: 'missing' }
@@ -234,6 +235,8 @@ class SessionPersistenceCoordinator implements DelegatedWorkRecordCommands {
       notifyFilesChanged: (event) => this.notifyFilesChanged(event),
       notifyRuntimeContextSessionUpdated: (session) =>
         publishSessionUpdate(session, 'runtime-context'),
+      notifyRuntimeTranscriptSessionUpdated: (session) =>
+        publishSessionUpdate(session, 'runtime-transcript'),
       notifyDelegationPolicyUpdated: (session) => onDelegationPolicyUpdated?.(session)
     })
     this.sideChatOwner = new SessionSideChatPersistenceOwner({
@@ -296,6 +299,23 @@ class SessionPersistenceCoordinator implements DelegatedWorkRecordCommands {
     )
   }
 
+  // Non-owning read for consumers that observe transcripts but must never repair them (reviewer's
+  // stale-verdict check and fix-loop refresh). `mode: 'read-only'` is required, not cosmetic:
+  // `readSessionFile` quarantines unless `quarantineInvalidFiles === false`, so a plain read would
+  // let a non-owner rename a corrupt live session file outside this coordinator's write lane.
+  // Returns undefined for missing/unreadable instead of throwing, so callers can degrade.
+  readSessionSnapshot(
+    projectId: string,
+    sessionId: string
+  ): Promise<PersistedChatSession | undefined> {
+    return this.operationScheduler.runSession(projectId, sessionId, async () => {
+      const loaded = await this.repository.loadSessionWithDiagnostics(projectId, sessionId, {
+        mode: 'read-only'
+      })
+      return loaded.status === 'found' ? structuredClone(loaded.session) : undefined
+    })
+  }
+
   loadSessionForContinuation(projectId: string, sessionId: string): Promise<PersistedChatSession> {
     return this.operationScheduler.runSession(projectId, sessionId, async () => {
       const loaded = await this.repository.loadSessionWithDiagnostics(projectId, sessionId)
@@ -303,6 +323,21 @@ class SessionPersistenceCoordinator implements DelegatedWorkRecordCommands {
         throw new Error(`Cannot prepare a durable continuation for a ${loaded.status} Session.`)
       }
       return structuredClone(loaded.session)
+    })
+  }
+
+  // Package publication commits through its own recovery journal. Adopt only durable authority
+  // into this live catalog before the new Session is exposed to runtime admission or renderers.
+  adoptPublishedSession(projectId: string, sessionId: string): Promise<void> {
+    return this.operationScheduler.runSession(projectId, sessionId, async () => {
+      this.assertMutable(projectId, sessionId, 'mutate')
+      const loaded = await this.repository.loadSessionWithDiagnostics(projectId, sessionId)
+      if (loaded.status !== 'found') {
+        throw new Error(`Cannot adopt a published ${loaded.status} Session.`)
+      }
+      await assertSessionIdentityOwnership(this.repository, this.stateOwner, loaded.session)
+      this.stateOwner.invalidateBindingTopology(projectId, sessionId)
+      this.stateOwner.recordSession(loaded.session)
     })
   }
 
@@ -831,7 +866,7 @@ class SessionPersistenceCoordinator implements DelegatedWorkRecordCommands {
           return {
             saved: await this.stateOwner.saveSession(
               session,
-              sanitizeRendererSaveSessionOptions(options),
+              sanitizeRendererSaveSessionOptions(options, session),
               authority
             )
           }
@@ -963,6 +998,15 @@ class SessionPersistenceCoordinator implements DelegatedWorkRecordCommands {
         this.stateOwner.invalidateBindingTopology(projectId, sessionId)
       }
     })
+  }
+
+  mutateRuntimeSession(
+    scope: { projectId: string; sessionId: string },
+    mutate: (session: PersistedChatSession) => PersistedChatSession
+  ): Promise<PersistedChatSession> {
+    return this.operationScheduler.runSession(scope.projectId, scope.sessionId, () =>
+      this.stateOwner.mutateRuntimeSession(scope, mutate)
+    )
   }
 
   retryArtifactFinalization(
@@ -1210,7 +1254,10 @@ type SessionCatalog = Pick<
   SessionPersistenceCoordinator,
   'containsMessageOnActiveBranch' | 'loadSessionForContinuation' | 'sessionProjectId'
 >
-type SessionMutation = Pick<SessionPersistenceCoordinator, 'appendUserMessageToInteraction'>
+type SessionMutation = Pick<
+  SessionPersistenceCoordinator,
+  'appendUserMessageToInteraction' | 'mutateRuntimeSession'
+>
 type SessionRuntimeContextCommands = Pick<
   SessionPersistenceCoordinator,
   'readSessionRuntimeContext' | 'patchSessionRuntimeContext'

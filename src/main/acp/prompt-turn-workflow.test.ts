@@ -77,6 +77,8 @@ type Harness = {
   pushUserMessage: Mock<AcpPromptTurnWorkflowOptions['environment']['pushUserMessage']>
   routeNotification: Mock<AcpPromptTurnWorkflowOptions['environment']['routeNotification']>
   resumeAfterReload: Mock<AcpPromptTurnWorkflowOptions['resumeAfterReload']>
+  prepareContinuationReplay: Mock<AcpPromptTurnWorkflowOptions['prepareContinuationReplay']>
+  disconnectForReload: Mock<AcpPromptTurnWorkflowOptions['disconnectForReload']>
   setSession: (replacement: ActiveSession) => void
   skill: TurnSkillHandle
   workflow: AcpPromptTurnWorkflow
@@ -354,6 +356,9 @@ const createHarness = (
     finalization,
     currentCwd: () => '/default',
     resolveProjectId: () => 'project-1',
+    prepareContinuationReplay: vi.fn<AcpPromptTurnWorkflowOptions['prepareContinuationReplay']>(
+      async () => ({ historyPreamble: 'durable history' })
+    ),
     disconnectForReload: vi.fn(async () => journal.push('disconnect')),
     resumeAfterReload,
     recordAdmittedPrompt: vi.fn(() => journal.push('handoff')),
@@ -386,6 +391,8 @@ const createHarness = (
     pushUserMessage,
     routeNotification,
     resumeAfterReload,
+    prepareContinuationReplay: workflowOptions.prepareContinuationReplay,
+    disconnectForReload: workflowOptions.disconnectForReload,
     setSession: (replacement: ActiveSession) => (session = replacement),
     skill,
     workflow
@@ -967,6 +974,65 @@ describe('AcpPromptTurnWorkflow', () => {
     expect(harness.executor.mock.calls[0][0].session).toBe(reloaded)
   })
 
+  it.each(['cancelled', 'superseded'] as const)(
+    'does not reconnect a continuation %s during history preparation',
+    async (action) => {
+      const replay = deferred<{ historyPreamble: string }>()
+      const skill = skillHandle('reload')
+      const harness = createHarness({ authorize: () => skill })
+      harness.prepareContinuationReplay.mockImplementation(() => replay.promise)
+      const pending = harness.workflow.run(request(), { kind: 'app-continuation' })
+      await vi.waitFor(() => expect(harness.prepareContinuationReplay).toHaveBeenCalledOnce())
+      let replacement: ReturnType<typeof harness.owner.reservePrompt> | undefined
+      if (action === 'cancelled') {
+        await harness.owner.cancelPrompt({
+          sessionId: 's1',
+          notify: async () => {},
+          onAccepted: () => {},
+          onTimeout: () => {}
+        })
+      } else {
+        replacement = harness.owner.reservePrompt({ sessionId: 's1', kind: 'prompt' })
+      }
+      const rejected = expect(pending).rejects.toThrow()
+      replay.resolve({ historyPreamble: 'late history' })
+      await rejected
+      expect(harness.disconnectForReload).not.toHaveBeenCalled()
+      expect(harness.executor).not.toHaveBeenCalled()
+      expect(skill.close).toHaveBeenCalledWith('failed', { reload: false })
+      if (replacement) {
+        expect(harness.owner.activatePrompt(replacement)).toBe(replacement)
+      }
+    }
+  )
+
+  it('leaves the provider connected and releases Skill ownership when continuation history cannot be restored', async () => {
+    const skill = skillHandle('reload')
+    const harness = createHarness({ authorize: () => skill })
+    harness.prepareContinuationReplay.mockRejectedValue(new Error('History unavailable'))
+
+    await expect(harness.workflow.run(request(), { kind: 'app-continuation' })).rejects.toThrow(
+      'History unavailable'
+    )
+
+    expect(harness.disconnectForReload).not.toHaveBeenCalled()
+    expect(harness.executor).not.toHaveBeenCalled()
+    expect(skill.close).toHaveBeenCalledWith('failed', { reload: false })
+    expect(harness.interactions.release).toHaveBeenCalledOnce()
+  })
+
+  it("retains an app continuation caller's explicit history fallback", async () => {
+    const harness = createHarness({ authorize: () => skillHandle('reload') })
+    harness.resumeAfterReload.mockResolvedValue({ contextReset: true })
+    const turn = request()
+    turn.resumeFallback = { historyPreamble: 'caller reconstructed history' }
+
+    await harness.workflow.run(turn, { kind: 'app-continuation' })
+
+    expect(harness.prepareContinuationReplay).not.toHaveBeenCalled()
+    expect(turn.historyPreamble).toBe('caller reconstructed history')
+  })
+
   it('reserves before Plan preflight and admits only an activated interaction', async () => {
     const harness = createHarness()
 
@@ -1291,6 +1357,54 @@ describe('AcpPromptTurnWorkflow', () => {
     expect(harness.finalization.compactIfIdle).toHaveBeenCalledWith('s1')
   })
 
+  it('retains the short Plan reference on a reconstructed continuation without replaying its body', async () => {
+    const reference = 'Plan record: OPEN_SCIENCE_INPUT_DIR/session-plan/current.json'
+    const harness = createHarness({
+      admitPlan: () => ({
+        active: planProjection(),
+        source: { kind: 'file-reference', reference }
+      })
+    })
+    const prompt: AcpPromptRequest = {
+      ...request(),
+      contextReset: true,
+      historyPreamble: 'Recovered work: continue the unfinished analysis.'
+    }
+
+    await harness.workflow.run(prompt, { kind: 'app-continuation' })
+
+    const prepared = harness.preparation.mock.calls[0][0]
+    expect(prepared.protectedContext).toContain(reference)
+    expect(prepared.protectedContext).toContain('approval=approved')
+    expect(prepared.protectedContext).not.toContain('Analyze the result')
+    expect(prepared.protectedContext).not.toContain('Analyze: not_started')
+    expect(prepared.request.historyPreamble).toContain('unfinished analysis')
+  })
+
+  it('retains the admitted Plan summary when its external file is unavailable', async () => {
+    const warning = 'The Plan file is unavailable; do not rely on an earlier copy.'
+    const harness = createHarness({
+      admitPlan: () => ({
+        active: planProjection(),
+        source: { kind: 'file-unavailable', warning }
+      })
+    })
+
+    await harness.workflow.run(request(), { kind: 'user' })
+
+    const prepared = harness.preparation.mock.calls[0][0]
+    expect(prepared.protectedContext).toContain(
+      'expectedArtifactVersionId=plan-version-1 expectedRevision=2'
+    )
+    expect(prepared.protectedContext).toContain('task=Analyze the result')
+    expect(prepared.protectedContext).toContain('- Analyze: not_started')
+    expect(prepared.protectedContext).toContain(
+      'an authoritative summary of the Plan as read for this request'
+    )
+    expect(prepared.protectedContext).toContain('report it as a blocker instead of guessing')
+    expect(prepared.protectedContext).toContain(warning)
+  })
+
   it('reads the current Session Compute execution targets for every Turn preparation', async () => {
     const resolveComputeExecutionTargetIds = vi.fn(() => ['ssh:cedar-gpu'])
     const harness = createHarness({ resolveComputeExecutionTargetIds })
@@ -1319,4 +1433,43 @@ describe('AcpPromptTurnWorkflow', () => {
       })
     )
   })
+})
+
+it('does not dispatch after cancellation is accepted during framework preparation', async () => {
+  const gate = deferred<void>()
+  const entered = deferred<void>()
+  const providerPrompt = vi.fn(async () => undefined)
+  const executor = new AcpProviderPromptExecutor({
+    backendGeneration: { current: backend, openCodeUsageApi: () => undefined }
+  })
+  const harness = createHarness({
+    beforePromptDispatch: async () => {
+      entered.resolve()
+      await gate.promise
+    },
+    execute: (input) => executor.execute(input)
+  })
+  harness.setSession({
+    sessionId: 'provider-1',
+    prompt: providerPrompt,
+    nextUpdate: async () => ({ kind: 'stop', response: { stopReason: 'end_turn' } })
+  } as unknown as ActiveSession)
+  const run = harness.workflow.run(request(), { kind: 'user' })
+  try {
+    await entered.promise
+    await harness.owner.cancelPrompt({
+      sessionId: 's1',
+      notify: async () => undefined,
+      onAccepted: () => undefined,
+      onTimeout: () => undefined
+    })
+    gate.resolve()
+    await run
+    expect(providerPrompt).not.toHaveBeenCalled()
+    expect(harness.onProviderPromptAccepted).not.toHaveBeenCalled()
+  } finally {
+    gate.resolve()
+    await run
+    harness.owner.supersedeAll()
+  }
 })
