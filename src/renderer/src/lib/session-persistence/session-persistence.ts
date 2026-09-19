@@ -777,15 +777,10 @@ const mergeSaveSessionOptions = (
   const conflictRebaseFields = [
     ...new Set([...(previous?.conflictRebaseFields ?? []), ...(next?.conflictRebaseFields ?? [])])
   ]
-  // A latest save with no writer options is an explicit/observer snapshot and must not inherit
-  // a lease that may have expired while the earlier runtime projection was queued. Conversation
-  // commands can still accompany a runtime save, so they retain the previous token unless an
-  // explicit renderer-owned rebase field is present.
   const runtimeWriterToken =
-    next?.runtimeWriterToken ??
-    (next === undefined || next.conflictRebaseFields?.length
-      ? undefined
-      : previous?.runtimeWriterToken)
+    next && Object.hasOwn(next, 'runtimeWriterToken')
+      ? next.runtimeWriterToken
+      : previous?.runtimeWriterToken
   const conversationCommands = [
     ...(previous?.conversationCommands ?? []),
     ...(next?.conversationCommands ?? [])
@@ -1018,7 +1013,12 @@ const createOrderedSessionPersistence = (
     const pending = pendingLatestByTarget.get(target)
     if (pending?.promise) {
       pending.task = task
-      pending.options = mergeSaveSessionOptions(pending.options, options)
+      // The latest snapshot owns its lease; explicit edits must not inherit an earlier writer's
+      // token. Rebase fields and conversation commands still accumulate across queued snapshots.
+      pending.options = mergeSaveSessionOptions(
+        { ...pending.options, runtimeWriterToken: options?.runtimeWriterToken },
+        options
+      )
       if (pending.streaming && !streaming) {
         // The turn ended: flush the terminal snapshot at the normal cadence instead of waiting
         // out the relaxed streaming interval.
@@ -1964,17 +1964,24 @@ const createStoreSaver = (
           ])
         ]
 
+        const conversationCommands = pendingSessionConversationCommands(session.id)
         const writerOptions =
-          conflictRebaseFields.length > 0 || hasUnsavedContextReset
+          conflictRebaseFields.length > 0 ||
+          hasUnsavedContextReset ||
+          conversationCommands.length > 0
             ? undefined
             : runtimeWriterSaveOptions()
-        const saveOptions = mergeSaveSessionOptions(
-          mergeSaveSessionOptions(
-            conflictRebaseFields.length > 0 ? { conflictRebaseFields } : undefined,
-            writerOptions
-          ),
-          { conversationCommands: pendingSessionConversationCommands(session.id) }
-        )
+        const saveOptions =
+          conflictRebaseFields.length > 0 ||
+          hasUnsavedContextReset ||
+          writerOptions?.runtimeWriterToken ||
+          conversationCommands.length > 0
+            ? {
+                ...(conflictRebaseFields.length > 0 ? { conflictRebaseFields } : {}),
+                ...(writerOptions ?? {}),
+                ...(conversationCommands.length > 0 ? { conversationCommands } : {})
+              }
+            : undefined
         const sourceAuthority = acknowledgedSessions.get(session.id)
         let submittedAuthority = sourceAuthority
         let rebasedBeforeSave = false

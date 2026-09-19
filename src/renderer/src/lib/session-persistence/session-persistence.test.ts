@@ -2806,7 +2806,7 @@ describe('renderer session persistence bridge', () => {
     vi.useFakeTimers()
     try {
       const session = createPersistedSession()
-      const saveSession = vi.fn(async (saved: PersistedChatSession) => saved)
+      const saveSession = vi.fn<SessionPersistenceApi['saveSession']>(async (saved) => saved)
       const api = createApi({ saveSession })
       const persistence = createOrderedSessionPersistence(api)
       const target = 'session:session-1'
@@ -2830,6 +2830,47 @@ describe('renderer session persistence bridge', () => {
       expect(saveSession).toHaveBeenCalledOnce()
       expect(saveSession.mock.calls[0][0].title).toBe('Explicit edit')
       expect(saveSession.mock.calls[0][1]).toBeUndefined()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not carry a stale runtime-writer lease into an explicit command save', async () => {
+    vi.useFakeTimers()
+    try {
+      const session = createPersistedSession()
+      const saveSession = vi.fn<SessionPersistenceApi['saveSession']>(async (saved) => saved)
+      const api = createApi({ saveSession })
+      const persistence = createOrderedSessionPersistence(api)
+      const target = 'session:session-1'
+
+      void persistence.saveLatestSession(
+        target,
+        async (options) => api.saveSession(session, options),
+        { runtimeWriterToken: 'expired-token' }
+      )
+      const explicit = persistence.saveLatestSession(
+        target,
+        async (options) => api.saveSession(session, options),
+        {
+          conversationCommands: [
+            {
+              id: 'command-1',
+              kind: 'select-branch',
+              timestamp: 1,
+              branchId: 'branch-1',
+              previousBranchId: 'branch-0'
+            }
+          ]
+        }
+      )
+
+      await vi.advanceTimersByTimeAsync(500)
+      await explicit
+
+      expect(saveSession).toHaveBeenCalledOnce()
+      expect(saveSession.mock.calls[0][1]?.runtimeWriterToken).toBeUndefined()
+      expect(saveSession.mock.calls[0][1]?.conversationCommands).toHaveLength(1)
     } finally {
       vi.useRealTimers()
     }

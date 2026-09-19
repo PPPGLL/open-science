@@ -451,11 +451,11 @@ const createLiveWorkspaceRuntimeEventProcessor = (): WorkspaceRuntimeEventProces
       ) {
         return true
       }
-      const writerOptions = runtimeWriterSaveOptions() ?? {}
+      const writerOptions = runtimeWriterSaveOptions()
       const applied = await applyWorkspaceRuntimeEvent(event, {
         canProject: () =>
           isRuntimeWriter() &&
-          runtimeWriterSaveOptions().runtimeWriterToken === writerOptions.runtimeWriterToken,
+          runtimeWriterSaveOptions()?.runtimeWriterToken === writerOptions?.runtimeWriterToken,
         saveSession: (session) => saveSessionInOrder(session, undefined, undefined, writerOptions),
         // Read current authority when the lane applies the event, not when its batch was queued.
         agentPromptInFlight: Boolean(
@@ -472,10 +472,10 @@ const createLiveWorkspaceRuntimeEventProcessor = (): WorkspaceRuntimeEventProces
     {
       applyEventBatch: async (events) => {
         if (!(await ensureRuntimeWriter())) return true
-        const token = runtimeWriterSaveOptions().runtimeWriterToken
+        const token = runtimeWriterSaveOptions()?.runtimeWriterToken
         return applyWorkspaceRuntimeEventBatch(
           events,
-          () => isRuntimeWriter() && runtimeWriterSaveOptions().runtimeWriterToken === token
+          () => isRuntimeWriter() && runtimeWriterSaveOptions()?.runtimeWriterToken === token
         )
       },
       presentation: liveWorkspaceRuntimePresentation
