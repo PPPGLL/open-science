@@ -114,6 +114,15 @@ const DELEGATED_RELIABLE_FAILURE_NAME = 'Post-fence reliable question'
 const DELEGATED_RELIABLE_FAIRNESS_TASK_A = 'Queue reliable fairness question A.'
 const DELEGATED_RELIABLE_FAIRNESS_TASK_B = 'Queue reliable fairness question B.'
 const RELIABLE_CHILD_DIRECTIVE = 'Use the renderer-visible reliable evidence.'
+const RELIABLE_CONTROL_MARKERS = [
+  RELIABLE_CHILD_DIRECTIVE,
+  'Child reliable question reached Main',
+  'Main answered the reliable child question',
+  'Parked reliable child question',
+  'Trigger reliable post-fence persistence failure',
+  'Reliable fairness child A',
+  'Reliable fairness child B'
+]
 const DELEGATED_BRANCH_A_TASK = `${DELEGATED_WAIT_MARKER} inactive branch child A.`
 const DELEGATED_BRANCH_B_TASK = `${DELEGATED_WAIT_MARKER} active branch child B1.`
 const DELEGATED_BRANCH_B_TASK_TWO = `${DELEGATED_WAIT_MARKER} active branch child B2.`
@@ -945,6 +954,9 @@ if (process.argv.includes('--version')) {
   const fixtureInstanceId = process.env.OPEN_SCIENCE_E2E_WSL_SETUP === '1' ? `${randomUUID()}-` : ''
   let nextMessageId = 1
   let nextSessionId = 1
+  let nextToolCallId = 1
+
+  const makeToolCallId = (kind) => `e2e-${kind}-${fixtureInstanceId}${nextToolCallId++}`
 
   const app = acp
     .agent({ name: 'open-science-e2e-agent' })
@@ -977,9 +989,17 @@ if (process.argv.includes('--version')) {
       return {}
     })
     .onRequest(acp.methods.agent.session.prompt, async (context) => {
-      const prompt = context.params.prompt
+      const rawPrompt = context.params.prompt
         .map((content) => (content.type === 'text' ? content.text : ''))
         .join('')
+      // Continuation prompts replay the originating turn so the provider can retain context. Keep
+      // the latest reliable-message control marker as the routing input; otherwise its historical
+      // delegate task text wins the first matching branch and the continuation starts a duplicate
+      // child instead of handling the delivered message.
+      const controlStart = Math.max(
+        ...RELIABLE_CONTROL_MARKERS.map((marker) => rawPrompt.lastIndexOf(marker))
+      )
+      const prompt = controlStart >= 0 ? rawPrompt.slice(controlStart) : rawPrompt
       await captureProviderPrompt(context.params.sessionId, prompt)
 
       if (prompt.includes(DELEGATED_WAIT_MARKER)) {
@@ -1788,7 +1808,7 @@ if (process.argv.includes('--version')) {
             {
               sessionId: context.params.sessionId,
               toolCall: {
-                toolCallId: 'e2e-delegated-permission-tool',
+                toolCallId: makeToolCallId('delegated-permission-tool'),
                 title: 'Read delegated evidence'
               },
               options: [
@@ -1880,7 +1900,7 @@ if (process.argv.includes('--version')) {
             {
               sessionId: context.params.sessionId,
               toolCall: {
-                toolCallId: 'e2e-permission-tool',
+                toolCallId: makeToolCallId('permission-tool'),
                 title: 'Write fixture output'
               },
               options: [
@@ -1902,7 +1922,7 @@ if (process.argv.includes('--version')) {
             {
               sessionId: context.params.sessionId,
               toolCall: {
-                toolCallId: 'e2e-skill-permission-tool',
+                toolCallId: makeToolCallId('skill-permission-tool'),
                 title: 'mcp__skills__load_skill',
                 rawInput: { skill: 'fixture-skill' }
               },
