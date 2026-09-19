@@ -777,7 +777,15 @@ const mergeSaveSessionOptions = (
   const conflictRebaseFields = [
     ...new Set([...(previous?.conflictRebaseFields ?? []), ...(next?.conflictRebaseFields ?? [])])
   ]
-  const runtimeWriterToken = next?.runtimeWriterToken ?? previous?.runtimeWriterToken
+  // A latest save with no writer options is an explicit/observer snapshot and must not inherit
+  // a lease that may have expired while the earlier runtime projection was queued. Conversation
+  // commands can still accompany a runtime save, so they retain the previous token unless an
+  // explicit renderer-owned rebase field is present.
+  const runtimeWriterToken =
+    next?.runtimeWriterToken ??
+    (next === undefined || next.conflictRebaseFields?.length
+      ? undefined
+      : previous?.runtimeWriterToken)
   const conversationCommands = [
     ...(previous?.conversationCommands ?? []),
     ...(next?.conversationCommands ?? [])
@@ -1956,10 +1964,14 @@ const createStoreSaver = (
           ])
         ]
 
+        const writerOptions =
+          conflictRebaseFields.length > 0 || hasUnsavedContextReset
+            ? undefined
+            : runtimeWriterSaveOptions()
         const saveOptions = mergeSaveSessionOptions(
           mergeSaveSessionOptions(
             conflictRebaseFields.length > 0 ? { conflictRebaseFields } : undefined,
-            runtimeWriterSaveOptions()
+            writerOptions
           ),
           { conversationCommands: pendingSessionConversationCommands(session.id) }
         )
