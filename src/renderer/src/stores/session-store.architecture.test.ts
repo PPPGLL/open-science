@@ -1060,6 +1060,8 @@ describe('Session Store architecture', () => {
         ],
         contract: ['src/shared/session-persistence.test.ts'],
         consumer: [
+          'src/renderer/src/lib/acp/runtime-observer.test.ts',
+          'src/renderer/src/lib/acp/runtime-writer-takeover.test.ts',
           'src/main/session-persistence/usage-regressions.test.ts',
           'src/renderer/src/App.test.tsx',
           'src/renderer/src/app-shell-presentation-owner.test.ts',
