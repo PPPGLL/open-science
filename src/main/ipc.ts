@@ -3358,6 +3358,7 @@ const createApplicationModules = async (
         credentialRequestBroker.hasPendingForSession(sessionId),
       imageInputCompatibility,
       memory: memoryService,
+      classifySkills: settingsService.classification.selectSkills,
       auxiliaryUsage: {
         projectIdForSession: (sessionId) =>
           sessionPersistenceCoordinator.sessionProjectId(sessionId),

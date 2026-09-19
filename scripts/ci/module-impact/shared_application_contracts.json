@@ -122,6 +122,7 @@
     "src/shared/window-controls.ts",
     "src/shared/wsl-setup.ts",
     "src/shared/config-root.ts",
+    "src/shared/classification.ts",
     "src/shared/runtime-writer.ts"
   ],
   "interfacePaths": [
