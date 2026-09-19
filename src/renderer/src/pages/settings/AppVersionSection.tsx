@@ -1,7 +1,7 @@
 import { InlineNotice } from '@/components/ui/inline-notice'
 /* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V5 */
 /* Hallmark · component: Settings About · macrostructure: identity + resource list
- * genre: modern-minimal · theme: Open Science Settings
+ * genre: modern-minimal · theme: Open-Science Settings
  * states: default · hover · focus · active · disabled · loading · error · success
  * contrast: pass (semantic Settings tokens) · slop: pass
  */
@@ -88,9 +88,9 @@ const AppVersionSection = ({
       <SettingsRow
         label={
           <div className="flex min-w-0 items-center gap-3">
-            <AppLogo className="size-12 rounded-lg" />
-            <div className="min-w-0">
-              <p className="flex items-baseline gap-2">
+            <AppLogo className="size-12 shrink-0 rounded-lg" />
+            <div className="min-w-0 flex-1">
+              <p className="flex flex-wrap items-baseline gap-x-2">
                 <span className="text-sm font-semibold text-foreground">{APP.name}</span>
                 <span className="text-xs text-muted-foreground tabular-nums">v{version}</span>
               </p>
@@ -110,7 +110,6 @@ const AppVersionSection = ({
           </div>
         }
         className="pt-0 sm:grid-cols-[minmax(0,1fr)_auto]"
-        controlClassName="w-auto justify-self-end"
       >
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
           <Button type="button" variant="outline" onClick={() => void check()} disabled={!canCheck}>

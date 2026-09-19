@@ -362,7 +362,7 @@ const registerSessionPersistenceIpcHandlers = (
       let durable: PersistedChatSession
       try {
         const persist = async (): Promise<PersistedChatSession> => {
-          const rendererOptions = sanitizeRendererSaveSessionOptions(options)
+          const rendererOptions = sanitizeRendererSaveSessionOptions(options, session)
           const result = rendererOptions
             ? await handlers.saveSession(session, rendererOptions)
             : await handlers.saveSession(session)

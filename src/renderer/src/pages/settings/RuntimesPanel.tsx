@@ -2,7 +2,7 @@ import { Notice } from '@/components/notice'
 import { InlineNotice } from '@/components/ui/inline-notice'
 /* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V5 */
 /* Hallmark · macrostructure: Workbench · genre: modern-minimal · tone: technical/austere
- * theme: existing Open Science Settings tokens · enrichment: none · motion: existing controls only
+ * theme: existing Open-Science Settings tokens · enrichment: none · motion: existing controls only
  */
 import {
   CheckCircle2,
@@ -754,7 +754,7 @@ const RuntimesPanel = ({
                       'Authorize an existing personal R library. Installation may change packages used by other projects. Environment restoration requires a matching interpreter.'
                     )
                   : t(
-                      'Lets Open Science install packages into this environment. Installs go to your own environment, not the app-managed storage.'
+                      'Lets Open-Science install packages into this environment. Installs go to your own environment, not the app-managed storage.'
                     )
               }
             >
@@ -1362,12 +1362,14 @@ const RuntimesPanel = ({
                   </Dialog.Close>
                 </div>
 
-                <div className={`${dialogBodyClassName} min-h-0 flex-1 overflow-hidden`}>
-                  <p className={dialogDescriptionClassName}>
+                <div
+                  className={`${dialogBodyClassName} flex min-h-0 flex-1 flex-col overflow-hidden`}
+                >
+                  <p className={cn(dialogDescriptionClassName, 'shrink-0')}>
                     {t('Installed packages in this environment.')}
                   </p>
 
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[13px] text-muted-foreground">
+                  <div className="mt-2 flex shrink-0 flex-wrap items-center gap-2 text-[13px] text-muted-foreground">
                     <Badge variant="secondary">{providerType(dialogPackagesEnv, t)}</Badge>
                     {/* Conda env name badge — but only when the provenance badge doesn't already carry
                       it: providerType() returns the "Conda: <name>" label for user-own conda envs, so
@@ -1386,7 +1388,7 @@ const RuntimesPanel = ({
                     <code className="truncate text-xs">{dialogPackagesEnv.interpreterPath}</code>
                   </div>
 
-                  <div className="mt-3 flex items-center gap-3">
+                  <div className="mt-3 flex shrink-0 items-center gap-3">
                     <div className="relative max-w-sm flex-1">
                       <Search
                         aria-hidden="true"
@@ -1419,12 +1421,12 @@ const RuntimesPanel = ({
                     ) : null}
                   </div>
 
-                  <div className="mt-2 max-h-[48vh] min-h-0 overflow-y-auto rounded-md border border-border">
+                  <div className="relative mt-2 max-h-[48vh] min-h-0 flex-1 overflow-y-auto rounded-md border border-border">
                     {packagesError !== null ? (
                       <Notice
                         level="error"
                         role="alert"
-                        className="m-3"
+                        className="m-3 w-auto"
                         description={packagesError}
                         primaryButton={{
                           label: t('Retry'),
