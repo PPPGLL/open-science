@@ -120,6 +120,7 @@ type WorkspaceCommandLifecycle = {
 type ResendEditedMessageInput = {
   expectedFrameworkId?: AgentFrameworkId
   agentConfiguration?: SessionAgentConfiguration
+  onMessageAppended?: (message: SendWorkspaceMessageResult) => void
   text: string
   annotations?: annotationProtocol.Annotation[]
   parts?: MessagePart[]
@@ -1258,6 +1259,7 @@ const resendEditedWorkspaceMessage = async (
         agentBackendId: options.agentBackendId,
         agentModel: options.agentModel,
         agentConfiguration: options.agentConfiguration,
+        onMessageAppended: input.onMessageAppended,
         historyReplayDescriptor: options.historyReplayDescriptor,
         truncateFromMessageId: input.messageId,
         supportsImageInput: options.supportsImageInput,

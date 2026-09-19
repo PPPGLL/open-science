@@ -763,6 +763,7 @@ describe('workspace message queue controller', () => {
     await vi.waitFor(() => expect(resendEditedMessage).toHaveBeenCalledOnce())
     expect(resendEditedMessage).toHaveBeenCalledWith('session-a', 'message-user-a', {
       agentConfiguration: admission('').agentConfiguration,
+      onMessageAppended: expect.any(Function),
       text: 'revised prompt',
       annotations: [],
       referencedArtifacts: [],
@@ -770,6 +771,46 @@ describe('workspace message queue controller', () => {
       forcedSkillIds: []
     })
     expect(input.runtime.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('hides a queued revision preview after its edited message is appended', async () => {
+    let finish!: (result: boolean) => void
+    let onMessageAppended: ((message: { sessionId: string; messageId: string }) => void) | undefined
+    const resendEditedMessage = vi.fn(
+      async (
+        _sessionId: string,
+        _messageId: string,
+        input: { onMessageAppended?: (message: { sessionId: string; messageId: string }) => void }
+      ) => {
+        onMessageAppended = input.onMessageAppended
+        return new Promise<boolean>((resolve) => {
+          finish = resolve
+        })
+      }
+    )
+    let currentSession = session()
+    const input = options(currentSession, {
+      promptInFlightSessionIds: [],
+      runtime: { sendMessage: vi.fn(), resendEditedMessage, cancelRun: vi.fn() },
+      getSession: () => currentSession
+    })
+    const hook = renderController(input)
+    mounted.push(hook)
+    act(() =>
+      hook.result.current.lifecycle.enqueue({
+        ...admission('revised prompt'),
+        session: currentSession,
+        revisionMessageId: 'message-user-a'
+      })
+    )
+    currentSession = session('idle')
+    await act(async () => hook.rerender({ ...input, activeSession: currentSession }))
+    await vi.waitFor(() => expect(resendEditedMessage).toHaveBeenCalledOnce())
+    expect(hook.result.current.items).toMatchObject([{ text: 'revised prompt', phase: 'sending' }])
+    act(() => onMessageAppended?.({ sessionId: 'session-a', messageId: 'message-sent' }))
+    expect(hook.result.current.items).toEqual([])
+    expect(hook.result.current.hasPendingWork).toBe(true)
+    await act(async () => finish(true))
   })
 
   it('resumes background draining when a Specialist barrier settles', async () => {

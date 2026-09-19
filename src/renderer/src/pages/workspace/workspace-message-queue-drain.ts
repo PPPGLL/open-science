@@ -107,6 +107,10 @@ const dispatchQueuedSession = (
       }
       const result = item.revisionMessageId
         ? await current.runtime.resendEditedMessage!(sessionId, item.revisionMessageId, {
+            onMessageAppended: () => {
+              if (owner.dispatches.get(sessionId) !== activeDispatch) return
+              owner.replaceItem(sessionId, item.id, { messageAppended: true })
+            },
             text: item.text,
             ...(item.agentFrameworkId ? { expectedFrameworkId: item.agentFrameworkId } : {}),
             agentConfiguration: item.agentConfiguration,
