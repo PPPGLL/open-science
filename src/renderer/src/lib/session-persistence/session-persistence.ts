@@ -1973,7 +1973,6 @@ const createStoreSaver = (
             : runtimeWriterSaveOptions()
         const saveOptions =
           conflictRebaseFields.length > 0 ||
-          hasUnsavedContextReset ||
           writerOptions?.runtimeWriterToken ||
           conversationCommands.length > 0
             ? {
