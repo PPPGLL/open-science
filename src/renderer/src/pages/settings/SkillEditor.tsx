@@ -1,3 +1,4 @@
+import { useRetainedDialogValue } from '@/components/ui/use-retained-dialog-value'
 import { fieldErrorClassName } from '@/components/ui/notice-chrome'
 import { TooltipProvider } from '@/components/ui/tooltip'
 /* Hallmark · pre-emit critique: P5 H5 E4 S5 R5 V4 */
@@ -160,7 +161,7 @@ type SkillEditorProps = {
 }
 
 const SkillEditorAlert = ({ message }: { message: string }): React.JSX.Element => (
-  <ErrorNotice role="alert" tone="amber" className="mt-2" description={message} />
+  <ErrorNotice inline role="alert" tone="amber" className="mt-2" description={message} />
 )
 
 // Create/edit form for a personal skill: Identity (name/description) + Content (SKILL.md body).
@@ -750,6 +751,7 @@ const SkillEditLoader = ({ skillId, onDone }: SkillEditLoaderProps): React.JSX.E
   const updateSkill = useSettingsStore((state) => state.updateSkill)
   const [draft, setDraft] = useState<SkillDraft | null>(null)
   const [conflict, setConflict] = useState<{ draft: SkillDraft; latest: SkillDraft } | null>(null)
+  const dialogConflict = useRetainedDialogValue(conflict)
   const [resolving, setResolving] = useState(false)
   const [conflictError, setConflictError] = useState<string | null>(null)
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error' | 'not-found'>('loading')
@@ -809,7 +811,7 @@ const SkillEditLoader = ({ skillId, onDone }: SkillEditLoaderProps): React.JSX.E
         <SettingsLoadNotice
           state={loadState === 'error' ? 'error' : 'loading'}
           loadingLabel={t('Loading Skill…')}
-          errorMessage={t('Open Science could not load this Skill.')}
+          errorMessage={t('Open-Science could not load this Skill.')}
           onRetry={loadDetail}
         />
       </div>
@@ -818,7 +820,7 @@ const SkillEditLoader = ({ skillId, onDone }: SkillEditLoaderProps): React.JSX.E
 
   const saveDraft = async (next: SkillDraft): Promise<void> => {
     // Optional API preconditions preserve old clients; the editor never performs a blind write.
-    if (!next.etag) throw new Error(t('Open Science could not load this Skill.'))
+    if (!next.etag) throw new Error(t('Open-Science could not load this Skill.'))
     try {
       await updateSkill({
         id: next.id ?? skillId,
@@ -831,7 +833,7 @@ const SkillEditLoader = ({ skillId, onDone }: SkillEditLoaderProps): React.JSX.E
     } catch (error) {
       if (!(error instanceof Error) || !error.message.includes('This Skill changed.')) throw error
       const detail = await window.api.settings.getSkillDetail(skillId)
-      if (!detail.etag) throw new Error(t('Open Science could not load this Skill.'))
+      if (!detail.etag) throw new Error(t('Open-Science could not load this Skill.'))
       setConflict({ draft: next, latest: toSkillDraft(detail) })
       setConflictError(null)
       return
@@ -884,12 +886,12 @@ const SkillEditLoader = ({ skillId, onDone }: SkillEditLoaderProps): React.JSX.E
                 </Dialog.Description>
               </div>
             </div>
-            {conflict ? (
+            {dialogConflict ? (
               <div className={`${dialogBodyClassName} min-h-0 overflow-y-auto`}>
                 <div className="grid gap-4 md:grid-cols-2">
                   {[
-                    { label: t('Your draft'), value: conflict.draft },
-                    { label: t('Latest version'), value: conflict.latest }
+                    { label: t('Your draft'), value: dialogConflict.draft },
+                    { label: t('Latest version'), value: dialogConflict.latest }
                   ].map(({ label, value }) => (
                     <section
                       key={label}

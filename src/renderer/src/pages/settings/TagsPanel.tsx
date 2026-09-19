@@ -1,3 +1,4 @@
+import { useRetainedDialogValue } from '@/components/ui/use-retained-dialog-value'
 import { InlineNotice } from '@/components/ui/inline-notice'
 import { TooltipProvider } from '@/components/ui/tooltip'
 /* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V5 */
@@ -394,6 +395,9 @@ const TagsList = ({
   const setScrollTop = useTagStore((state) => state.setBrowserScrollTop)
   const resourceListRef = useRef<HTMLElement>(null)
   const [deleting, setDeleting] = useState<TagView>()
+  const dialogDeleteCount = useRetainedDialogValue(
+    deleting ? assignments.filter(({ tagId }) => tagId === deleting.id).length : undefined
+  )
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [deleteError, setDeleteError] = useState<string>()
   const [assignmentError, setAssignmentError] = useState<string>()
@@ -713,8 +717,6 @@ const TagsList = ({
       <div data-slot="tags-panel" className="flex h-full min-h-0 flex-col px-3 py-3 md:px-4">
         <SettingsPanelHeader
           className="mb-3"
-          title={t('Tags')}
-          description={t('Create and reorder tags, then browse everything attached to each tag.')}
           search={
             <SettingsSearchInput
               value={query}
@@ -1103,7 +1105,7 @@ const TagsList = ({
                 </AlertDialog.Description>
                 <p className="mt-2 text-xs text-muted-foreground">
                   {t('Assignments to remove: {{count}}.', {
-                    count: deleting ? (counts.get(deleting.id) ?? 0) : 0,
+                    count: dialogDeleteCount ?? 0,
                     defaultValue_one: 'Assignment to remove: {{count}}.'
                   })}
                 </p>

@@ -2216,6 +2216,64 @@ describe('notebook local RPC server', () => {
     }
   )
 
+  it('aborts an admitted Plan call when its issued capability is released', async () => {
+    const root = await createStorageRoot()
+    const callStarted = createDeferred<AbortSignal>()
+    const pendingCall = createDeferred<unknown>()
+    const service = new NotebookRuntimeService({
+      configRoot: root,
+      dataRoot: root,
+      projectId: 'default-project',
+      repository: new NotebookRunRepository(root)
+    })
+    const server = new NotebookLocalRpcServer(service, {
+      planService: {
+        call: async (input) => {
+          callStarted.resolve(input.signal)
+          input.signal.addEventListener('abort', () => pendingCall.resolve(undefined), {
+            once: true
+          })
+          return pendingCall.promise
+        }
+      }
+    })
+    const connection = await server.issuePlanConnection('session-1', 'project-1')
+    let request: Promise<Response> | undefined
+
+    try {
+      request = fetchLocalRpc(
+        connection,
+        {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${connection.token}`,
+            'content-type': 'application/json'
+          },
+          body: JSON.stringify({
+            method: 'planCall',
+            params: {
+              operation: 'updateStepStatus',
+              input: { title: 'Analyze the data', status: 'completed' }
+            }
+          })
+        },
+        'Notebook Plan capability RPC'
+      )
+      const signal = await callStarted.promise
+      expect(signal.aborted).toBe(false)
+
+      connection.release?.()
+
+      await vi.waitFor(() => expect(signal.aborted).toBe(true))
+      await expect(request).resolves.toMatchObject({ status: 200 })
+    } finally {
+      pendingCall.resolve(undefined)
+      await request?.catch(() => undefined)
+      connection.release?.()
+      await server.close()
+    }
+  })
+
   it.each([
     ['tcp', 'execute'],
     ['pipe', 'execute'],
@@ -3699,17 +3757,19 @@ describe('notebook local RPC server', () => {
       storageKey: 'artifacts/default-project/panel-worker-1/panel-a-v1/content',
       association: 'turn-attached'
     }
-    const openRun = vi.fn(
-      async () =>
-        ({
-          getRunInputFiles: () => [leasedInput, workflowArtifact],
-          resolve: async () => {
-            leasedInput.association = 'resolver-accessed'
-            return '/managed/groups.csv'
-          },
-          close: () => [{ ...leasedInput }, { ...workflowArtifact }]
-        }) as never
-    )
+    let capturedScope: { assertActive: () => void } | undefined
+    const openRun = vi.fn(async (request: { producerScope?: { assertActive: () => void } }) => {
+      capturedScope = request.producerScope
+      request.producerScope?.assertActive()
+      return {
+        getRunInputFiles: () => [leasedInput, workflowArtifact],
+        resolve: async () => {
+          leasedInput.association = 'resolver-accessed'
+          return '/managed/groups.csv'
+        },
+        close: () => [{ ...leasedInput }, { ...workflowArtifact }]
+      } as never
+    })
     const service = new NotebookRuntimeService({
       configRoot: root,
       dataRoot: root,
@@ -3765,6 +3825,7 @@ describe('notebook local RPC server', () => {
     rpcToken = connection.token
     server.setArtifactTurnBinding('session-1', {
       ownerExecutionId: 'execution-1',
+      artifactRunId: 'artifact-run-1',
       projectId: 'default-project',
       provenanceContext: {
         rootFrameId: 'root-frame-1',
@@ -3796,12 +3857,13 @@ describe('notebook local RPC server', () => {
             sessionId: 'session-1',
             workspaceCwd: '/workspace',
             code: 'print("ok")',
-            artifactVersionInputs: ['panel-a-v1']
+            artifactVersionInputs: ['panel-a-v1'],
+            provenanceContext: { promptMessageId: 'forged-prompt' }
           }
         })
       })
 
-      expect(response.status).toBe(200)
+      expect(response.status, await response.clone().text()).toBe(200)
       expect(leasedInput.association).toBe('resolver-accessed')
       const document = JSON.parse(
         await readFile(join(root, 'notebooks', 'default-project', 'session-1', 'run.json'), 'utf8')
@@ -3818,7 +3880,14 @@ describe('notebook local RPC server', () => {
         projectId: 'default-project',
         appSessionId: 'session-1',
         promptMessageId: 'message-user-1',
-        artifactVersionInputs: ['panel-a-v1']
+        artifactVersionInputs: ['panel-a-v1'],
+        producerScope: expect.objectContaining({
+          artifactRunId: 'artifact-run-1',
+          appSessionId: 'session-1',
+          promptMessageId: 'message-user-1',
+          agentFrameId: 'root-frame-1',
+          assertActive: expect.any(Function)
+        })
       })
       const payload = (await response.json()) as {
         result: { inputFiles: Array<Record<string, unknown>> }
@@ -3831,6 +3900,9 @@ describe('notebook local RPC server', () => {
         expect.objectContaining({ inputFileVersionId: 'panel-a-v1' })
       ])
       expect(payload.result.inputFiles[0]).not.toHaveProperty('storageKey')
+      expect(capturedScope).toBeDefined()
+      await server.clearArtifactTurnBinding('session-1', 'execution-1')
+      expect(() => capturedScope!.assertActive()).toThrow()
     } finally {
       await server.close()
     }
@@ -3981,7 +4053,13 @@ describe('notebook local RPC server', () => {
         projectId: 'project-from-root-owner',
         appSessionId: 'session-1',
         promptMessageId: 'prompt-1',
-        artifactVersionInputs: ['panel-a-v1']
+        artifactVersionInputs: ['panel-a-v1'],
+        producerScope: expect.objectContaining({
+          artifactRunId: expect.stringMatching(/^artifact-run-/),
+          appSessionId: 'session-1',
+          promptMessageId: 'prompt-1',
+          assertActive: expect.any(Function)
+        })
       })
     } finally {
       connection.release?.()

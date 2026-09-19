@@ -761,7 +761,7 @@ describe('workspace conversation controller', () => {
     expect(input.runtime.resendEditedMessage).not.toHaveBeenCalled()
   })
 
-  it('keeps send and message branching available while history replay is pending', () => {
+  it('keeps send and message branching available while history replay is pending', async () => {
     const replaySession = session({ pendingHistoryReplay: { kind: 'all' } })
     const startSideChat = vi.fn(async () => true)
     const input = options({
@@ -777,14 +777,14 @@ describe('workspace conversation controller', () => {
       branch: true
     })
     act(() => hook.result.current.actions.branch('agent-message-a'))
-    act(() => hook.result.current.actions.sideChat.start())
+    await act(async () => hook.result.current.actions.sideChat.start())
     expect(input.runtime.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         branchSourceSessionId: 'session-a',
         branchSourceMessageId: 'agent-message-a'
       })
     )
-    expect(startSideChat).not.toHaveBeenCalled()
+    expect(startSideChat).toHaveBeenCalledOnce()
 
     vi.mocked(input.runtime.sendMessage).mockClear()
     act(() => hook.result.current.actions.submit.draft({ forcedSkillIds: [] }))
@@ -1039,6 +1039,23 @@ describe('workspace conversation controller', () => {
     expect(input.composer.lifecycle.clearDraft).toHaveBeenCalledWith('session-a', 7)
   })
 
+  it('uses independent Side chat admission when the main model and main preparation are unavailable', async () => {
+    const input = options({
+      agentConfigurationReady: false,
+      sendPreparationInFlightSessionIds: ['session-a'],
+      sideChat: { start: vi.fn(async () => true) }
+    })
+    const hook = renderController(input)
+    mounted.push(hook)
+    await act(async () => hook.result.current.actions.sideChat.start())
+    expect(input.sideChat?.start).toHaveBeenCalledOnce()
+    expect(input.composer.lifecycle.clearDraft).toHaveBeenCalledWith(
+      'session-a',
+      expect.any(Number)
+    )
+    expect(input.runtime.sendMessage).not.toHaveBeenCalled()
+  })
+
   it('starts Side chat from an annotation-only captured draft', async () => {
     const annotation = quotedAnnotation()
     const input = options({ sideChat: { start: vi.fn(async () => true) } })
@@ -1125,7 +1142,7 @@ describe('workspace conversation controller', () => {
   })
 
   it.each(['waiting-for-user', 'waiting-permission', 'waiting-plan-approval'] as const)(
-    'does not start Side chat while the main Session is %s',
+    'starts Side chat while the main Session is %s',
     (status) => {
       const input = options({
         activeSession: session({ status }),
@@ -1136,7 +1153,7 @@ describe('workspace conversation controller', () => {
 
       act(() => hook.result.current.actions.sideChat.start())
 
-      expect(input.sideChat?.start).not.toHaveBeenCalled()
+      expect(input.sideChat?.start).toHaveBeenCalledOnce()
       expect(input.composer.lifecycle.clearDraft).not.toHaveBeenCalled()
     }
   )

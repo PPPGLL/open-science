@@ -689,7 +689,11 @@ const startPendingPrompt = (
       referencedArtifacts: withPdf(request.projectId, request.referencedArtifacts, pdfContext),
       referencedSessions: collectSessionReferences(request.parts),
       parts: request.parts,
-      replay: { ...request.replay, contextReset: Boolean(request.contextReset) },
+      replay: {
+        ...request.replay,
+        ...(request.specialistId ? { resumeFallback: request.replay } : {}),
+        contextReset: Boolean(request.contextReset)
+      },
       turnIntent: request.turnIntent,
       accepted: () =>
         useSessionStore.getState().clearPendingContextReplay(created.sessionId, boundMessageId)
@@ -982,6 +986,21 @@ const sendWorkspaceMessage = async (
       return appended
     }
 
+    // An unresolved earlier save must not append another unsent user Message on every retry.
+    // Stable application-owned messages already have identity-based retry handling below.
+    if (!stableMessageId) {
+      try {
+        await (lifecycle.flushPersistence ?? flushSessionPersistence)()
+      } catch (error) {
+        if (lifecycle.isCurrent?.() === false) return undefined
+        if (isSessionSizeLimitError(error)) lifecycle.onSessionSizeLimit?.(sessionId)
+        useSessionStore.getState().failRun(sessionId, errorMessage(error))
+        return undefined
+      }
+      if (lifecycle.isCurrent?.() === false) return undefined
+      if (!canAdmitExistingWorkspacePrompt(runtime.state, input)) return undefined
+    }
+
     const prepared = await prepareExistingWorkspacePrompt(runtime, {
       sessionId,
       requireExistingSession: input.requireExistingSession,
@@ -1001,7 +1020,7 @@ const sendWorkspaceMessage = async (
         cutMessageId: input.truncateFromMessageId,
         excludeMessageId: rearmExistingStableMessage ? existingStableMessage?.id : undefined,
         force: input.forceHistoryReplay,
-        includeResumeFallback: Boolean(input.forcedSkillIds?.length)
+        includeResumeFallback: Boolean(input.forcedSkillIds?.length || session?.specialistId)
       },
       onPreparationStateChange: lifecycle.onSendPreparationStateChange,
       drainRuntimeEvents: lifecycle.drainRuntimeEvents,
@@ -1098,8 +1117,17 @@ const sendWorkspaceMessage = async (
     // Application-owned stable identities need an explicit save because they may be dispatched
     // outside the mounted store saver. Ordinary user Messages are already queued by that saver;
     // drain it before provider dispatch so Delegation cannot authenticate against a stale root
-    // conversation snapshot. Recovery rearms an already durable Message and needs no extra barrier.
-    if (stableMessageId && !(input.allowCompactionRecovery && rearmExistingStableMessage)) {
+    // conversation snapshot. Main-owned recovery also persists its new start-run command before
+    // dispatch, even though the user Message already exists in the durable transcript.
+    const mainOwnedRecovery =
+      input.allowCompactionRecovery &&
+      rearmExistingStableMessage &&
+      useSessionStore.getState().sessions.find((candidate) => candidate.id === sessionId)
+        ?.runtimeTranscriptOwner === 'main'
+    if (
+      stableMessageId &&
+      (!(input.allowCompactionRecovery && rearmExistingStableMessage) || mainOwnedRecovery)
+    ) {
       const durableSession = useSessionStore
         .getState()
         .sessions.find((candidate) => candidate.id === sessionId)

@@ -1,3 +1,5 @@
+import { useRetainedDialogValue } from '@/components/ui/use-retained-dialog-value'
+import { InlineNotice } from '@/components/ui/inline-notice'
 import { ErrorNotice } from '@/components/error-notice'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { canImportSpecialistPackage } from '@/lib/specialist-package-upload'
@@ -220,6 +222,7 @@ const InstalledSpecialistsPanel = ({
     preview: SpecialistDeletePreview
     action: 'delete' | 'uninstall'
   } | null>(null)
+  const dialogDeletingItem = useRetainedDialogValue(deletingItem)
   const [deleteSkillIds, setDeleteSkillIds] = useState<Set<string>>(new Set())
   const [deleteSkillsExpanded, setDeleteSkillsExpanded] = useState(false)
   const [deleteBusy, setDeleteBusy] = useState(false)
@@ -489,7 +492,7 @@ const InstalledSpecialistsPanel = ({
 
   // Built-in Skills are app-managed and never participate in Specialist deletion. Keep this
   // renderer-side filter as a defensive boundary even though the main-side preview omits them.
-  const visibleDeleteSkills = deletingItem?.preview.skills.filter(
+  const visibleDeleteSkills = dialogDeletingItem?.preview.skills.filter(
     (skill) => skill.source !== 'featured'
   )
   const deletableDeleteSkills = visibleDeleteSkills?.filter((skill) => skill.deletable) ?? []
@@ -555,7 +558,7 @@ const InstalledSpecialistsPanel = ({
           </div>
           <h3 className="mt-4 text-lg font-semibold">{t('Template saved')}</h3>
           <p className="mt-2 text-sm text-muted-foreground">
-            {t('openscience-specialist-template.zip is ready for contributor editing.')}
+            {t('open-science-specialist-template.zip is ready for contributor editing.')}
           </p>
           <Button type="button" className="mt-5" onClick={() => setTemplateSaved(false)}>
             {t('Done')}
@@ -613,7 +616,7 @@ const InstalledSpecialistsPanel = ({
     return (
       <div className="p-5">
         <div className="mb-5 flex items-start justify-between gap-4">
-          <div>
+          <div className="min-w-0 flex-1">
             <p className="text-xs font-semibold uppercase tracking-wide text-primary">
               {t('Export ZIP')}
             </p>
@@ -622,13 +625,13 @@ const InstalledSpecialistsPanel = ({
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
               {t(
-                'Builtin and owned Skills are selected by default. Skills copied into the ZIP are discovered automatically on import; Connector IDs are carried as selected references.'
+                'Owned Skills are bundled by default. Featured Skills are referenced by name. Check other Skills to include their files.'
               )}
             </p>
           </div>
           <span
             role="status"
-            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${
+            className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${
               !exportChecking && !exportValidationFailed && exportPreview?.canExport
                 ? 'bg-success-000/10 text-success-000'
                 : exportPreview
@@ -646,7 +649,7 @@ const InstalledSpecialistsPanel = ({
           </span>
         </div>
         {exportError ? (
-          <ErrorNotice role="alert" tone="amber" description={t(exportError)} />
+          <ErrorNotice inline role="alert" tone="amber" description={t(exportError)} />
         ) : null}
         {exportPreview ? (
           <div className="flex flex-col gap-4">
@@ -707,7 +710,7 @@ const InstalledSpecialistsPanel = ({
                 )
               })}
             </div>
-            <div className="rounded-lg border border-border p-3 text-sm" role="status">
+            <InlineNotice role="status" level="info">
               <strong>{t('What the package carries')}</strong>
               <p className="text-muted-foreground">
                 {t(
@@ -720,7 +723,7 @@ const InstalledSpecialistsPanel = ({
                   ? exportPreview.connectorIds.join(', ')
                   : t('None selected')}
               </p>
-            </div>
+            </InlineNotice>
             <div className="flex justify-between gap-3">
               <Button
                 type="button"
@@ -901,7 +904,7 @@ const InstalledSpecialistsPanel = ({
               {packagePreview ? (
                 <span
                   role="status"
-                  className={`ml-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                  className={`ml-2 inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${
                     canInstallPackage
                       ? 'bg-success-000/10 text-success-000'
                       : blocking
@@ -919,7 +922,9 @@ const InstalledSpecialistsPanel = ({
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
               {packagePreview
-                ? t('Review the package summary and diagnostics before continuing to setup.')
+                ? t(
+                    'Import saves this package before configuration. New bundled Skills stay disabled for the Main Agent; existing Skill settings are preserved.'
+                  )
                 : t('Choose one ZIP containing exactly one Specialist.')}
             </p>
           </div>
@@ -982,6 +987,7 @@ const InstalledSpecialistsPanel = ({
             </div>
             {templateSaveError ? (
               <ErrorNotice
+                inline
                 role="alert"
                 tone="amber"
                 className="mt-4"
@@ -1217,6 +1223,7 @@ const InstalledSpecialistsPanel = ({
 
             {packagePreview.overwrite?.modifiedSinceImport ? (
               <ErrorNotice
+                inline
                 role="alert"
                 tone="amber"
                 description={t('Local edits will be replaced by this import.')}
@@ -1282,7 +1289,7 @@ const InstalledSpecialistsPanel = ({
                         // Bundled Skills were just installed on disk; refresh the Skill catalog so the
                         // editor recognizes them as available instead of showing "Missing · unavailable".
                         try {
-                          await useSettingsStore.getState().loadSkills()
+                          await useSettingsStore.getState().loadSkills(true)
                         } catch {
                           // Best-effort refresh; navigation proceeds so the install result is shown.
                         }
@@ -1294,7 +1301,7 @@ const InstalledSpecialistsPanel = ({
                     .finally(() => setPackageBusy(false))
                 }}
               >
-                {packagePreview.overwrite ? t('Review overwrite') : t('Next')}
+                {packagePreview.overwrite ? t('Review overwrite') : t('Import and configure')}
               </Button>
             </div>
             {packagePreview.overwrite ? (
@@ -1403,7 +1410,7 @@ const InstalledSpecialistsPanel = ({
                                 // Bundled Skills were just installed on disk; refresh the Skill catalog
                                 // so the editor recognizes them as available after the overwrite.
                                 try {
-                                  await useSettingsStore.getState().loadSkills()
+                                  await useSettingsStore.getState().loadSkills(true)
                                 } catch {
                                   // Best-effort refresh; navigation proceeds so the install result is shown.
                                 }
@@ -1618,7 +1625,7 @@ const InstalledSpecialistsPanel = ({
         <ErrorNotice
           role="alert"
           className="mb-4"
-          description={t('Open Science could not load Specialists. Retry to continue.')}
+          description={t('Open-Science could not load Specialists. Retry to continue.')}
           primaryButton={{ label: t('Retry'), onClick: () => void load({ force: true }) }}
         />
       ) : null}
@@ -2255,9 +2262,6 @@ const InstalledSpecialistsPanel = ({
         onOpenChange={(open) => {
           if (!open && !deleteBusy) {
             setDeletingItem(null)
-            setDeleteSkillIds(new Set())
-            setDeleteSkillsExpanded(false)
-            setDeleteError(undefined)
           }
         }}
       >
@@ -2269,9 +2273,9 @@ const InstalledSpecialistsPanel = ({
             <div className={dialogHeaderClassName}>
               <div className="min-w-0">
                 <AlertDialog.Title className={dialogTitleClassName}>
-                  {deletingItem?.action === 'uninstall'
-                    ? t('Uninstall “{{name}}”?', { name: deletingItem.name })
-                    : t('Delete “{{name}}”?', { name: deletingItem?.name ?? '' })}
+                  {dialogDeletingItem?.action === 'uninstall'
+                    ? t('Uninstall “{{name}}”?', { name: dialogDeletingItem.name })
+                    : t('Delete “{{name}}”?', { name: dialogDeletingItem?.name ?? '' })}
                 </AlertDialog.Title>
               </div>
               <AlertDialog.Cancel asChild>
@@ -2290,7 +2294,7 @@ const InstalledSpecialistsPanel = ({
 
             <div className={`${dialogBodyClassName} overflow-y-auto`}>
               <AlertDialog.Description className={dialogDescriptionClassName}>
-                {deletingItem?.action === 'uninstall'
+                {dialogDeletingItem?.action === 'uninstall'
                   ? t(
                       'This removes the Marketplace Specialist from this device. Conversations using it will no longer be able to use it.'
                     )
@@ -2445,6 +2449,7 @@ const InstalledSpecialistsPanel = ({
               )}
               {deleteError ? (
                 <ErrorNotice
+                  inline
                   role="alert"
                   tone="amber"
                   className="mt-3"
@@ -2481,12 +2486,9 @@ const InstalledSpecialistsPanel = ({
                         [...deleteSkillIds].sort()
                       )
                       if (result.status === 'deleted') {
-                        await useSettingsStore.getState().loadSkills()
+                        await useSettingsStore.getState().loadSkills(true)
                         setDeleteBusy(false)
                         setDeletingItem(null)
-                        setDeleteSkillIds(new Set())
-                        setDeleteSkillsExpanded(false)
-                        setDeleteError(undefined)
                       } else {
                         const messages: Record<typeof result.code, string> = {
                           'stale-preview':
@@ -2522,7 +2524,7 @@ const InstalledSpecialistsPanel = ({
                   {deleteBusy ? (
                     <Loader2 data-icon="inline-start" className="animate-spin" aria-hidden="true" />
                   ) : null}
-                  {deletingItem?.action === 'uninstall'
+                  {dialogDeletingItem?.action === 'uninstall'
                     ? t(deleteBusy ? 'Uninstalling…' : 'Uninstall')
                     : t(deleteBusy ? 'Deleting…' : 'Delete Specialist')}
                 </span>
