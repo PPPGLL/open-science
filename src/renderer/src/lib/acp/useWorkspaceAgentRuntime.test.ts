@@ -2897,6 +2897,11 @@ describe('workspace agent message sending', () => {
     const persistence = new Promise<void>((resolve) => {
       release = resolve
     })
+    let flushCount = 0
+    const flushPersistence = vi.fn(() => {
+      flushCount += 1
+      return flushCount === 1 ? Promise.resolve() : persistence
+    })
     const onMessageAppended = vi.fn(({ sessionId, messageId }) => {
       const session = useSessionStore.getState().sessions.find((s) => s.id === sessionId)
       expect(session?.messages.find((m) => m.id === messageId)?.content).toBe('mobile send')
@@ -2910,7 +2915,7 @@ describe('workspace agent message sending', () => {
         projectId: 'project-1',
         onMessageAppended
       },
-      { flushPersistence: () => persistence }
+      { flushPersistence }
     )
     await vi.waitFor(() => expect(onMessageAppended).toHaveBeenCalledOnce())
     expect(runtime.sendPrompt).not.toHaveBeenCalled()

@@ -988,9 +988,7 @@ const sendWorkspaceMessage = async (
 
     // An unresolved earlier save must not append another unsent user Message on every retry.
     // Stable application-owned messages already have identity-based retry handling below.
-    // Queue callers provide the append callback so they can clear their optimistic preview
-    // before persistence; delaying that callback would deadlock their dispatch.
-    if (!stableMessageId && !input.onMessageAppended) {
+    if (!stableMessageId) {
       try {
         await (lifecycle.flushPersistence ?? flushSessionPersistence)()
       } catch (error) {
